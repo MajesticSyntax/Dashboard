@@ -1,16 +1,9 @@
-export type Category = 
-  | 'AI' 
-  | 'Development' 
-  | 'Design' 
-  | 'Education' 
-  | 'Productivity' 
-  | 'Finance' 
-  | 'Social' 
-  | 'Entertainment' 
-  | 'News' 
-  | 'Shopping' 
-  | 'Personal' 
-  | string;
+export type Category = string;
+
+export interface CategoryItem {
+  name: string;
+  color: string;
+}
 
 export interface Website {
   id: string;
@@ -52,6 +45,8 @@ export interface AppSettings {
   theme: 'dark' | 'light' | 'minimal' | 'glass' | 'nebula';
   glowingNodes: boolean;
   mouseHoverEffect: boolean;
+  backgroundImage?: string;
+  backgroundImageOpacity?: number;
   pinEnabled?: boolean;
   pinCode?: string;
 }

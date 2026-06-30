@@ -10,10 +10,11 @@ import { AddWebsiteModal } from './components/AddWebsiteModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ProfileModal } from './components/ProfileModal';
 import { LockScreen } from './components/LockScreen';
+import { GraphFilters } from './components/GraphFilters';
 import { useStore } from './store/useStore';
 import { seedInitialData, db } from './db/db';
 import { motion, AnimatePresence } from 'motion/react';
-import { Maximize2, RotateCcw, LayoutGrid, Plus, MoreVertical, Focus } from 'lucide-react';
+import { Maximize2, RotateCcw, LayoutGrid, Plus, MoreVertical, Focus, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from './lib/utils';
 
 const queryClient = new QueryClient();
@@ -56,6 +57,7 @@ function NexusApp() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -123,6 +125,17 @@ function NexusApp() {
         '--glass-opacity': settings.glassEffect ? '0.3' : '0.05'
       } as React.CSSProperties}
     >
+      {/* Prebuilt Background Image Layer */}
+      {settings.backgroundImage && (
+        <div 
+          className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-all duration-700 select-none pointer-events-none"
+          style={{ 
+            backgroundImage: `url(${settings.backgroundImage})`,
+            opacity: settings.backgroundImageOpacity ?? 0.4,
+            filter: `blur(${settings.blurAmount ? settings.blurAmount / 2 : 0}px)`
+          }}
+        />
+      )}
       {/* Interactive Global Hover Shine Spotlight (Foreground Overlay) */}
       <div 
         className={`fixed inset-0 pointer-events-none z-[9999] mix-blend-screen transition-opacity duration-300 ${settings.mouseHoverEffect ? 'opacity-100' : 'opacity-0'}`}
@@ -225,13 +238,14 @@ function NexusApp() {
 
             {viewMode === 'graph' && <NodeDetails />}
 
-            {/* Active Nodes - Top Right - Only in Graph View */}
+            {/* Active Nodes & Filters - Top Right - Only in Graph View */}
             {viewMode === 'graph' && (
-              <div className="absolute top-8 right-8 flex items-center gap-6 pointer-events-none z-40">
-                <div className="flex flex-col items-end text-right">
+              <div className="absolute top-8 right-8 flex flex-col items-end gap-3 z-40">
+                <div className="flex flex-col items-end text-right pointer-events-none select-none">
                   <span className="text-[10px] text-white/50 uppercase tracking-[0.2em] font-bold">Active Nodes</span>
                   <span className="text-2xl font-medium tracking-tight text-white">{websitesCount.toLocaleString()}</span>
                 </div>
+                <GraphFilters />
               </div>
             )}
 
@@ -251,72 +265,90 @@ function NexusApp() {
 
             {/* Floating Controls */}
             {viewMode === 'graph' && (
-              <motion.div 
-                initial={{ opacity: 0, x: 40 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute bottom-12 right-12 flex flex-col gap-3 z-40"
-              >
-                <div className="glass-dark border border-white/5 rounded-[20px] overflow-hidden flex flex-col items-center p-1.5 shadow-2xl backdrop-blur-3xl bg-white/[0.02]">
-                  {[
-                    { icon: Plus, label: 'Add Website', onClick: () => setIsAddModalOpen(true), delay: 0 },
-                    { icon: Focus, label: 'Fit to View', onClick: () => triggerFitToView(), delay: 0.1 },
-                    { icon: Maximize2, label: 'Fullscreen', onClick: toggleFullscreen, delay: 0.2 },
-                    { icon: RotateCcw, label: 'Reset Visits', onClick: async () => {
-                      if (confirm('Are you sure you want to reset all visit counts to 0?')) {
-                        try {
-                          await db.websites.toCollection().modify({ usageCount: 0 });
-                          
-                          // Manually update react-query cache for instant UI feedback
-                          queryClient.setQueryData(['websites'], (old: any) => {
-                            if (!old) return [];
-                            return old.map((site: any) => ({ ...site, usageCount: 0 }));
-                          });
-                          
-                          if (selectedWebsiteId) {
-                            queryClient.setQueryData(['website', selectedWebsiteId], (old: any) => {
-                              if (!old) return null;
-                              return { ...old, usageCount: 0 };
-                            });
+              <AnimatePresence mode="wait">
+                {!showControls ? (
+                  <motion.button
+                    key="collapsed-controls"
+                    initial={{ opacity: 0, scale: 0.8, y: 20, x: '-50%' }}
+                    animate={{ opacity: 1, scale: 1, y: 0, x: '-50%' }}
+                    exit={{ opacity: 0, scale: 0.8, y: 20, x: '-50%' }}
+                    onClick={() => setShowControls(true)}
+                    className="absolute bottom-12 left-1/2 z-40 p-4 rounded-full border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl bg-[#0a0f1d]/80 text-white/60 hover:text-white hover:scale-110 active:scale-95 cursor-pointer transition-all flex items-center justify-center hover:border-white/25 group"
+                    title="Show Controls"
+                  >
+                    <ChevronUp className="w-5 h-5 transition-transform group-hover:-translate-y-0.5" />
+                  </motion.button>
+                ) : (
+                  <motion.div 
+                    key="expanded-controls"
+                    initial={{ opacity: 0, scale: 0.9, y: 30, x: '-50%' }}
+                    animate={{ opacity: 1, scale: 1, y: 0, x: '-50%' }}
+                    exit={{ opacity: 0, scale: 0.9, y: 30, x: '-50%' }}
+                    transition={{ type: "spring", stiffness: 350, damping: 26 }}
+                    className="absolute bottom-12 left-1/2 z-40"
+                  >
+                    <div className="border border-white/10 rounded-full flex flex-row items-center p-1.5 gap-2 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl bg-[#090d14]/75">
+                      {/* Highlighted trigger toggle button styled like the image */}
+                      <button
+                        onClick={() => setShowControls(false)}
+                        className="bg-white/[0.08] text-white rounded-[18px] px-4.5 py-2.5 border border-white/10 shadow-[0_4px_12px_rgba(255,255,255,0.05)] cursor-pointer hover:bg-white/[0.12] transition-all group relative flex items-center gap-1.5 font-medium"
+                        title="Hide Controls"
+                      >
+                        <ChevronDown className="w-4 h-4 text-white" />
+                        <span className="font-sans font-bold uppercase tracking-[0.1em] text-[10px] text-white/90">Hide</span>
+                      </button>
+
+                      {/* Rest of the controls */}
+                      {[
+                        { icon: Plus, label: 'Add Website', onClick: () => setIsAddModalOpen(true) },
+                        { icon: Focus, label: 'Fit to View', onClick: () => triggerFitToView() },
+                        { icon: Maximize2, label: 'Fullscreen', onClick: toggleFullscreen },
+                        { icon: RotateCcw, label: 'Reset Visits', onClick: async () => {
+                          if (confirm('Are you sure you want to reset all visit counts to 0?')) {
+                            try {
+                              await db.websites.toCollection().modify({ usageCount: 0 });
+                              
+                              // Manually update react-query cache for instant UI feedback
+                              queryClient.setQueryData(['websites'], (old: any) => {
+                                if (!old) return [];
+                                return old.map((site: any) => ({ ...site, usageCount: 0 }));
+                              });
+                              
+                              if (selectedWebsiteId) {
+                                queryClient.setQueryData(['website', selectedWebsiteId], (old: any) => {
+                                  if (!old) return null;
+                                  return { ...old, usageCount: 0 };
+                                });
+                              }
+                              
+                              // Force invalidation to ensure sync
+                              await queryClient.invalidateQueries({ queryKey: ['websites'] });
+                              await queryClient.invalidateQueries({ queryKey: ['websites-count'] });
+                              if (selectedWebsiteId) {
+                                  await queryClient.invalidateQueries({ queryKey: ['website', selectedWebsiteId] });
+                              }
+                            } catch (error) {
+                              console.error('Failed to reset visits:', error);
+                            }
                           }
-                          
-                          // Force invalidation to ensure sync
-                          await queryClient.invalidateQueries({ queryKey: ['websites'] });
-                          await queryClient.invalidateQueries({ queryKey: ['websites-count'] });
-                          if (selectedWebsiteId) {
-                            await queryClient.invalidateQueries({ queryKey: ['website', selectedWebsiteId] });
-                          }
-                        } catch (error) {
-                          console.error('Failed to reset visits:', error);
-                        }
-                      }
-                    }, delay: 0.3 },
-                    { icon: LayoutGrid, label: 'Settings', onClick: () => setIsSettingsOpen(true), delay: 0.4 }
-                  ].map((btn, idx, arr) => (
-                    <motion.button
-                      key={btn.label}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.6 + btn.delay, duration: 0.4 }}
-                      onClick={btn.onClick}
-                      className={cn(
-                        "p-2.5 hover:bg-white/5 transition-all group relative",
-                        idx === 4 ? "text-[#7c7c7c]" : idx === 1 ? "text-[#968b8b]" : "text-[#f6eded]",
-                        idx !== arr.length - 1 && "border-b border-white/[0.03]"
-                      )}
-                    >
-                      <btn.icon className={cn(
-                        "w-3.5 h-3.5 transition-transform",
-                        btn.label === 'Fullscreen' ? 'group-hover:scale-110' :
-                        btn.label === 'Fit to View' ? 'group-hover:scale-110' : 'group-hover:scale-110'
-                      )} />
-                      <span className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-lg bg-black/60 backdrop-blur-xl border border-white/5 text-[9px] font-bold text-white/40 uppercase tracking-[0.15em] opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap translate-x-2 group-hover:translate-x-0 font-sans">
-                        {btn.label}
-                      </span>
-                    </motion.button>
-                  ))}
-                </div>
-              </motion.div>
+                        }},
+                        { icon: LayoutGrid, label: 'Settings', onClick: () => setIsSettingsOpen(true) }
+                      ].map((btn) => (
+                        <button
+                          key={btn.label}
+                          onClick={btn.onClick}
+                          className="text-white/40 hover:text-white p-3 rounded-full hover:bg-white/[0.05] transition-all group relative cursor-pointer flex items-center justify-center border border-transparent hover:border-white/5"
+                        >
+                          <btn.icon className="w-4.5 h-4.5 transition-transform group-hover:scale-105" />
+                          <span className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-2.5 py-1.5 rounded-lg bg-black/95 backdrop-blur-xl border border-white/10 text-[9px] font-bold text-white/50 uppercase tracking-[0.15em] opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap translate-y-2 group-hover:translate-y-0 font-sans shadow-lg">
+                            {btn.label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             )}
         </div>
       </main>

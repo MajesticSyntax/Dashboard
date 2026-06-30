@@ -18,6 +18,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const { exportData, importData } = useImportExport();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bgFileInputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [bgError, setBgError] = useState('');
 
   // Security & Storage states
   const [isPersisted, setIsPersisted] = useState(false);
@@ -144,7 +147,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   };
 
+  const handleBgUpload = (file: File) => {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setBgError('Please upload an image file (PNG, JPG, WEBP).');
+      return;
+    }
+
+    if (file.size > 4.5 * 1024 * 1024) {
+      setBgError('Image is too large. Limit is 4.5MB to save offline.');
+      return;
+    }
+
+    setBgError('');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64Url = event.target?.result as string;
+      if (base64Url) {
+        setSettings({ backgroundImage: base64Url });
+      }
+    };
+    reader.onerror = () => {
+      setBgError('Failed to read image file.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const onDragLeave = () => {
+    setDragOver(false);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleBgUpload(file);
+    }
+  };
+
   const themes = [
+    { id: 'dark', label: 'Obsidian Dark', colors: ['#09090b', '#18181b'], nodeColor: '#10b981', accentColor: '#10b981' },
     { id: 'minimal', label: 'Eclipse', colors: ['#050505', '#1a1a1a'], nodeColor: '#9ca3af', accentColor: '#522C5D' },
     { id: 'glass', label: 'Cosmos', colors: ['#000814', '#001d3d'], nodeColor: '#3b82f6', accentColor: '#3b82f6' },
     { id: 'nebula', label: 'Nebula', colors: ['#0f0a1a', '#1a142e'], nodeColor: '#c084fc', accentColor: '#c084fc' },
@@ -282,34 +331,99 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             <p className="text-[9px] text-white/50 leading-tight">Adjust background tone. Nodes and theme colors remain unaffected.</p>
                           </div>
                         </div>
+                      </div>
+                    </section>
 
-                        {/* Presets */}
-                        <div className="space-y-1.5 pt-1 border-t border-white/[0.03]">
-                          <span className="text-[9px] text-white/40 uppercase tracking-wider font-extrabold block mb-1">Canvas Presets</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {[
-                              { label: 'Void', color: '#000000' },
-                              { label: 'Obsidian', color: '#050505' },
-                              { label: 'Midnight', color: '#0a0f1d' },
-                              { label: 'Abyss', color: '#000814' },
-                              { label: 'Forest', color: '#02120e' },
-                              { label: 'Wine', color: '#160205' },
-                            ].map((preset) => (
-                              <button
-                                key={preset.color}
-                                onClick={() => setSettings({ backgroundColor: preset.color })}
-                                className={`px-2 py-1 rounded-md text-[9px] font-extrabold tracking-wide uppercase transition-all flex items-center gap-1.5 ${
-                                  settings.backgroundColor.toLowerCase() === preset.color.toLowerCase() 
-                                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' 
-                                    : 'bg-white/5 text-white/60 border border-transparent hover:bg-white/10 hover:text-white'
-                                }`}
-                              >
-                                <span className="w-2 h-2 rounded-full border border-white/10" style={{ backgroundColor: preset.color }} />
-                                {preset.label}
-                              </button>
-                            ))}
+                    {/* Ambient Background Wallpaper */}
+                    <section className="space-y-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Palette className="w-3.5 h-3.5 text-blue-400" />
+                        <h3 className="text-[10px] font-extrabold text-white/70 uppercase tracking-[0.2em]">Background Wallpaper</h3>
+                      </div>
+
+                      <div className="bg-white/[0.03] backdrop-blur-sm border border-white/5 rounded-xl p-3.5 space-y-4">
+                        {/* Custom Wallpaper Dropzone / Control */}
+                        <div className="flex flex-col gap-2.5">
+                          <span className="text-[9px] font-extrabold text-white/40 uppercase tracking-wider block px-0.5">Upload Wallpaper</span>
+                          
+                          <div
+                            onDragOver={onDragOver}
+                            onDragLeave={onDragLeave}
+                            onDrop={onDrop}
+                            onClick={() => {
+                              bgFileInputRef.current?.click();
+                            }}
+                            className={`relative border border-dashed rounded-xl p-3 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-300 ${
+                              dragOver 
+                                ? 'border-blue-500 bg-blue-500/10 text-blue-400' 
+                                : 'border-white/10 hover:border-white/20 bg-white/[0.01] hover:bg-white/[0.03] text-white/50 hover:text-white/80'
+                            }`}
+                          >
+                            <input 
+                              type="file" 
+                              ref={bgFileInputRef} 
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleBgUpload(file);
+                              }} 
+                              accept="image/*" 
+                              className="hidden" 
+                            />
+                            
+                            {settings.backgroundImage ? (
+                              <div className="w-full flex items-center justify-between gap-2.5 bg-black/40 p-2 rounded-lg border border-white/5">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <div 
+                                    className="w-10 h-10 rounded-md bg-cover bg-center shrink-0 border border-white/10" 
+                                    style={{ backgroundImage: `url(${settings.backgroundImage})` }}
+                                  />
+                                  <div className="flex flex-col text-left overflow-hidden">
+                                    <span className="text-[9px] font-bold text-white truncate">Active Custom Wall</span>
+                                    <span className="text-[7.5px] text-white/40 uppercase font-mono tracking-wider">Base64 Offline</span>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSettings({ backgroundImage: '' });
+                                  }}
+                                  className="p-1.5 rounded bg-red-500/15 text-red-400 hover:bg-red-500/35 hover:text-red-300 transition-all cursor-pointer"
+                                  title="Remove Wallpaper"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <Upload className="w-4 h-4 text-blue-400 opacity-80" />
+                                <div className="flex flex-col items-center text-center">
+                                  <span className="text-[10px] font-bold text-white/70">Drag & drop or click</span>
+                                  <span className="text-[7.5px] text-white/40 uppercase tracking-wider font-sans mt-0.5">PNG, JPG, WEBP (Max 4.5MB)</span>
+                                </div>
+                              </>
+                            )}
                           </div>
+                          
+                          {bgError && (
+                            <p className="text-[8.5px] text-red-400 font-bold px-0.5 animate-pulse text-center">{bgError}</p>
+                          )}
                         </div>
+
+                        {settings.backgroundImage && (
+                          <div className="space-y-2 pt-2 border-t border-white/[0.03]">
+                            <div className="flex justify-between items-center px-0.5">
+                              <span className="text-[9px] font-extrabold text-white/40 uppercase tracking-wider">Wallpaper Opacity</span>
+                              <span className="text-[10px] font-mono text-blue-400 font-bold">{Math.round((settings.backgroundImageOpacity ?? 0.4) * 100)}%</span>
+                            </div>
+                            <input 
+                              type="range" min="0.05" max="1" step="0.05"
+                              value={settings.backgroundImageOpacity ?? 0.4}
+                              onChange={(e) => setSettings({ backgroundImageOpacity: parseFloat(e.target.value) })}
+                              className="w-full accent-blue-500 bg-white/5 rounded-full h-1 cursor-pointer"
+                            />
+                          </div>
+                        )}
                       </div>
                     </section>
 

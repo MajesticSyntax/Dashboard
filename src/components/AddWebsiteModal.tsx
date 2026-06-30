@@ -13,7 +13,7 @@ interface AddWebsiteModalProps {
 
 export const AddWebsiteModal: React.FC<AddWebsiteModalProps> = ({ isOpen, onClose }) => {
   const queryClient = useQueryClient();
-  const { editingWebsiteId, setEditingWebsiteId } = useStore();
+  const { editingWebsiteId, setEditingWebsiteId, categories } = useStore();
   const [formData, setFormData] = useState({
     name: '',
     url: '',
@@ -51,42 +51,6 @@ export const AddWebsiteModal: React.FC<AddWebsiteModalProps> = ({ isOpen, onClos
     };
     loadWebsiteData();
   }, [isOpen, editingWebsiteId]);
-
-  // Automatically pick a color similar to other nodes in the same category (only when creating)
-  useEffect(() => {
-    if (editingWebsiteId) return;
-
-    const updateColor = async () => {
-      const websites = await db.websites.where('category').equals(formData.category).toArray();
-      if (websites.length > 0) {
-        // Pick the most common color or a variation of the first one
-        const baseColor = websites[0].color;
-        setFormData(prev => ({ ...prev, color: baseColor }));
-      } else {
-        // Default colors for categories if none exist
-        const defaults: Record<string, string> = {
-          'AI': '#10a37f',
-          'Development': '#6366f1',
-          'Design': '#f43f5e',
-          'Education': '#f59e0b',
-          'Productivity': '#8b5cf6',
-          'Finance': '#10b981',
-          'Social': '#3b82f6',
-          'Entertainment': '#ef4444',
-          'News': '#6b7280',
-          'Shopping': '#ec4899',
-          'Personal': '#3b82f6'
-        };
-        setFormData(prev => ({ ...prev, color: defaults[formData.category] || '#3b82f6' }));
-      }
-    };
-    if (isOpen) updateColor();
-  }, [formData.category, isOpen, editingWebsiteId]);
-
-  const categories: Category[] = [
-    'AI', 'Development', 'Design', 'Education', 'Productivity', 
-    'Finance', 'Social', 'Entertainment', 'News', 'Shopping', 'Personal'
-  ];
 
   const handleClose = () => {
     setEditingWebsiteId(null);
@@ -205,8 +169,8 @@ export const AddWebsiteModal: React.FC<AddWebsiteModalProps> = ({ isOpen, onClos
                         className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white/10 transition-all appearance-none cursor-pointer text-white/95 font-medium"
                       >
                         {categories.map(cat => (
-                          <option key={cat} value={cat} className="bg-[#0a0a0a] text-white py-2">
-                            {cat}
+                          <option key={cat.name} value={cat.name} className="bg-[#0a0a0a] text-white py-2">
+                            {cat.name}
                           </option>
                         ))}
                       </select>

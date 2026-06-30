@@ -29,7 +29,7 @@ const getDomain = (url: string) => {
 };
 
 export const GraphView: React.FC = () => {
-  const { searchQuery, selectedCategory, settings, setSelectedWebsiteId, lastReset, fitToViewTrigger, setEditingWebsiteId } = useStore();
+  const { searchQuery, selectedCategory, settings, setSelectedWebsiteId, lastReset, fitToViewTrigger, setEditingWebsiteId, graphFilterCategory, graphFilterTag } = useStore();
   const fgRef = useRef<ForceGraphMethods>();
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -198,6 +198,7 @@ export const GraphView: React.FC = () => {
       name: w.name,
       url: w.url,
       category: w.category,
+      tags: w.tags || [],
       color: getCustomColor(w),
       usageCount: w.usageCount || 0,
       val: Math.max(3.5, Math.sqrt(w.usageCount || 0) * 1.5 + 3.5), // Beautiful square root scaling for visiting time count
@@ -454,23 +455,49 @@ export const GraphView: React.FC = () => {
     
     let isBlurred = false;
     let isFocused = false;
+    
+    const hasCategoryFilter = !!graphFilterCategory;
+    const hasTagFilter = !!graphFilterTag;
+    const hasAnyFilter = hasCategoryFilter || hasTagFilter;
+
+    let matchesFilter = true;
+    if (hasCategoryFilter && node.category !== graphFilterCategory) {
+      matchesFilter = false;
+    }
+    if (hasTagFilter && (!node.tags || !node.tags.some((t: string) => t.toLowerCase() === graphFilterTag?.toLowerCase()))) {
+      matchesFilter = false;
+    }
+
+    if (hasAnyFilter) {
+      if (node.isSun) {
+        isBlurred = true;
+      } else if (!matchesFilter) {
+        isBlurred = true;
+      } else {
+        isFocused = true;
+      }
+    }
+
     if (clickedNodeId) {
        if (node.isSun) {
           isBlurred = true;
+          isFocused = false;
        } else {
            const clickedDomain = getDomain(graphData.nodes.find((n: any) => n.id === clickedNodeId)?.url || '');
            const nodeDomain = getDomain(node.url || '');
            if (node.id === clickedNodeId || (clickedDomain && nodeDomain === clickedDomain && nodeDomain !== '')) {
                isFocused = true;
+               isBlurred = false;
            } else {
                isBlurred = true;
+               isFocused = false;
            }
        }
     }
 
     ctx.save();
     if (isBlurred) {
-      ctx.globalAlpha = 0.15;
+      ctx.globalAlpha = 0.12; // Beautifully dimmed out
     } else {
       ctx.globalAlpha = 1.0;
     }
@@ -527,7 +554,7 @@ export const GraphView: React.FC = () => {
       ctx.fillText(label, node.x, node.y + size + 8 / globalScale);
     }
     ctx.restore();
-  }, [clickedNodeId, graphData.nodes, settings.glowingNodes, settings.glowStrength]);
+  }, [clickedNodeId, graphData.nodes, settings.glowingNodes, settings.glowStrength, graphFilterCategory, graphFilterTag]);
 
   return (
     <div 
@@ -563,6 +590,26 @@ export const GraphView: React.FC = () => {
           if (link.isParentLink) return 'transparent';
           if (link.isOrbitLink) return 'transparent';
           
+          const hasCategoryFilter = !!graphFilterCategory;
+          const hasTagFilter = !!graphFilterTag;
+          const hasAnyFilter = hasCategoryFilter || hasTagFilter;
+          
+          if (hasAnyFilter) {
+            const sourceCategory = link.source.category || (typeof link.source === 'object' ? link.source.category : '');
+            const targetCategory = link.target.category || (typeof link.target === 'object' ? link.target.category : '');
+            const sourceTags = link.source.tags || (typeof link.source === 'object' ? link.source.tags : []) || [];
+            const targetTags = link.target.tags || (typeof link.target === 'object' ? link.target.tags : []) || [];
+            
+            const sourceMatches = (!graphFilterCategory || sourceCategory === graphFilterCategory) &&
+                                  (!graphFilterTag || sourceTags.some((t: string) => t.toLowerCase() === graphFilterTag.toLowerCase()));
+            const targetMatches = (!graphFilterCategory || targetCategory === graphFilterCategory) &&
+                                  (!graphFilterTag || targetTags.some((t: string) => t.toLowerCase() === graphFilterTag.toLowerCase()));
+            
+            if (!sourceMatches || !targetMatches) {
+              return 'transparent';
+            }
+          }
+
           if (link.isDomainLink) {
              const isConnectedToClicked = clickedNodeId && (link.source.id === clickedNodeId || link.target.id === clickedNodeId || link.source === clickedNodeId || link.target === clickedNodeId);
              if (clickedNodeId && !isConnectedToClicked) return 'transparent'; // Hide other domain links when focused

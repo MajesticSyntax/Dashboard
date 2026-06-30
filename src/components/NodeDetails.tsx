@@ -8,7 +8,7 @@ import { getFavicon } from '../lib/utils';
 import { format } from 'date-fns';
 
 export const NodeDetails: React.FC = () => {
-  const { selectedWebsiteId, setSelectedWebsiteId } = useStore();
+  const { selectedWebsiteId, setSelectedWebsiteId, isSidebarOpen, settings } = useStore();
   const queryClient = useQueryClient();
 
   const { data: website } = useQuery({
@@ -17,15 +17,18 @@ export const NodeDetails: React.FC = () => {
     enabled: !!selectedWebsiteId,
   });
 
+  const leftOffset = isSidebarOpen ? (settings.sidebarWidth + 24) : 24;
+
   return (
     <AnimatePresence>
       {selectedWebsiteId && website && (
         <motion.aside
-          initial={{ opacity: 0, x: 400 }}
+          initial={{ opacity: 0, x: -100 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 400 }}
+          exit={{ opacity: 0, x: -100 }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          className="fixed top-0 right-0 w-[400px] h-full glass-dark border-l border-white/10 shadow-[-20px_0_50px_rgba(0,0,0,0.5)] z-[60] flex flex-col"
+          className="fixed top-[12.5%] bottom-[12.5%] w-[360px] glass-dark border border-white/10 shadow-[10px_10px_40px_rgba(0,0,0,0.6)] z-[58] flex flex-col rounded-[24px] overflow-hidden"
+          style={{ left: `${leftOffset}px` }}
         >
           {/* Header */}
           <div className="p-8 flex items-start justify-between">

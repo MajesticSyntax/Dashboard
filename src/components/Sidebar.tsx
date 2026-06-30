@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useStore } from '../store/useStore';
@@ -14,6 +14,7 @@ import {
   History, 
   Trash2,
   FolderOpen,
+  Folder,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -43,8 +44,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ onProfileClick }) => {
     settings, 
     userProfile,
     viewMode,
-    setViewMode
+    setViewMode,
+    categories,
+    addCategory,
+    deleteCategory
   } = useStore();
+
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   const websites = useLiveQuery(() => db.websites.toArray());
 
@@ -59,16 +66,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onProfileClick }) => {
 
   const websitesCount = websites?.length || 0;
 
-  const categories = [
-    { name: 'All', icon: Cloud, color: 'bg-white/40' },
-    { name: 'AI', icon: Cloud, color: 'bg-emerald-400' },
-    { name: 'Development', icon: LayoutGrid, color: 'bg-blue-400' },
-    { name: 'Design', icon: LayoutGrid, color: 'bg-orange-400' },
-    { name: 'Education', icon: LayoutGrid, color: 'bg-yellow-400' },
-    { name: 'Productivity', icon: LayoutGrid, color: 'bg-purple-400' },
-    { name: 'Finance', icon: LayoutGrid, color: 'bg-emerald-600' },
-    { name: 'Social', icon: LayoutGrid, color: 'bg-pink-400' },
-    { name: 'Entertainment', icon: LayoutGrid, color: 'bg-red-400' },
+  const displayCategories = [
+    { name: 'All' },
+    ...categories
   ];
 
   const navigation = [
@@ -76,6 +76,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ onProfileClick }) => {
     { name: 'Dashboard', icon: LayoutGrid, id: 'grid' },
     { name: 'List View', icon: List, id: 'list' },
   ];
+
+  const handleAddCategorySubmit = () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    
+    addCategory({
+      name: trimmed,
+      color: '#94a3b8'
+    });
+    
+    setNewCategoryName('');
+    setIsAddingCategory(false);
+  };
 
   return (
     <motion.aside
@@ -131,30 +144,106 @@ export const Sidebar: React.FC<SidebarProps> = ({ onProfileClick }) => {
 
         <div>
           {isSidebarOpen && (
-            <p className="text-[10px] uppercase tracking-[0.25em] text-white px-3 mb-3 font-bold font-sans">Categories</p>
+            <div className="flex items-center justify-between px-3 mb-3">
+              <p className="text-[10px] uppercase tracking-[0.25em] text-white font-bold font-sans">Categories</p>
+              <button 
+                onClick={() => setIsAddingCategory(!isAddingCategory)}
+                className="p-1 rounded-md hover:bg-white/5 text-white/40 hover:text-white transition-all cursor-pointer"
+                title="Add Category"
+              >
+                <Plus className={cn("w-3.5 h-3.5 transition-transform duration-300", isAddingCategory && "rotate-45")} />
+              </button>
+            </div>
           )}
+
+          {isAddingCategory && isSidebarOpen && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-3 mb-3 bg-white/[0.03] border border-white/5 rounded-xl space-y-2.5 mx-2"
+            >
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="Category name..."
+                className="w-full bg-white/5 border border-white/10 rounded-lg py-1.5 px-2.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500/40 text-white font-medium"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleAddCategorySubmit();
+                  }
+                }}
+              />
+              <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingCategory(false);
+                    setNewCategoryName('');
+                  }}
+                  className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-[10px] font-semibold text-white/60 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddCategorySubmit}
+                  className="px-3 py-1 rounded bg-blue-500 hover:bg-blue-600 text-[10px] font-bold text-white transition-colors cursor-pointer shadow-md"
+                >
+                  Create
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           <div className="space-y-0.5">
-            {categories.map((cat) => (
-              <button
+            {displayCategories.map((cat) => (
+              <div
                 key={cat.name}
-                onClick={() => setSelectedCategory(cat.name === 'All' ? null : cat.name)}
                 className={cn(
-                  "w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors cursor-pointer group rounded-lg hover:bg-white/[0.02]",
+                  "w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors group/cat rounded-lg hover:bg-white/[0.02] relative",
                   selectedCategory === cat.name || (cat.name === 'All' && !selectedCategory)
-                    ? "text-white"
-                    : "text-white/30 hover:text-white"
+                    ? "text-white font-semibold"
+                    : "text-white/60 hover:text-white"
                 )}
               >
-                <div className="flex items-center gap-2.5">
-                  <div className={cn("w-1.5 h-1.5 rounded-full", cat.color)} />
-                  {isSidebarOpen && <span className="font-medium">{cat.name}</span>}
-                </div>
+                <button
+                  onClick={() => setSelectedCategory(cat.name === 'All' ? null : cat.name)}
+                  className="flex-1 flex items-center gap-2.5 text-left py-0.5 cursor-pointer"
+                >
+                  <Folder className={cn(
+                    "w-3.5 h-3.5 shrink-0 transition-colors",
+                    selectedCategory === cat.name || (cat.name === 'All' && !selectedCategory)
+                      ? "text-blue-400"
+                      : "text-white/40 group-hover/cat:text-white/80"
+                  )} />
+                  {isSidebarOpen && <span className="font-medium truncate max-w-[120px]">{cat.name}</span>}
+                </button>
+                
                 {isSidebarOpen && (
-                  <span className="text-[9px] text-white/20 font-bold group-hover:text-white/40 transition-colors">
-                    {cat.name === 'All' ? websitesCount : (categoryCounts[cat.name] || 0)}
-                  </span>
+                  <div className="flex items-center gap-1.5 h-5">
+                    <span className="text-[9px] text-white/30 font-bold group-hover/cat:opacity-0 transition-all">
+                      {cat.name === 'All' ? websitesCount : (categoryCounts[cat.name] || 0)}
+                    </span>
+                    
+                    {cat.name !== 'All' && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Are you sure you want to delete the category "${cat.name}"? Websites in this category will be moved to "Personal".`)) {
+                            await deleteCategory(cat.name);
+                          }
+                        }}
+                        className="p-0.5 rounded opacity-0 group-hover/cat:opacity-100 text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all cursor-pointer absolute right-3"
+                        title="Delete Category"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 )}
-              </button>
+              </div>
             ))}
           </div>
         </div>
