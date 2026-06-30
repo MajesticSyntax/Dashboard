@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-[#050506] text-[#e1e1e6] font-sans antialiased overflow-hidden relative;
+}
+
+body::before {
+  content: "";
+  @apply absolute inset-0 opacity-[0.01] pointer-events-none z-[100];
+  background-image: url("https://www.transparenttextures.com/patterns/carbon-fibre.png");
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.glass {
+  @apply bg-white/10 backdrop-blur-2xl border border-white/20;
+}
+
+.glass-dark {
+  background-color: rgba(0, 0, 0, var(--glass-opacity, 0.3));
+  backdrop-filter: blur(var(--glass-blur, 40px));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Hover Shine Overlay for Glass Containers */
+.glass-dark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    160px circle at var(--mouse-x, 0px) var(--mouse-y, 0px),
+    rgba(255, 255, 255, 0.08),
+    transparent 80%
+  );
+  background-attachment: fixed;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1;
+}
+
+.glass-dark:hover::after {
+  opacity: 1;
+}
+
+/* Hover Shine Utility for Generic Cards */
+.hover-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.hover-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    180px circle at var(--mouse-x, 0px) var(--mouse-y, 0px),
+    rgba(255, 255, 255, 0.07),
+    transparent 80%
+  );
+  background-attachment: fixed;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
+}
+
+.hover-shine:hover::after {
+  opacity: 1;
+}
+
+.glow {
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+}
+
+.force-graph-container canvas {
+  @apply cursor-grab active:cursor-grabbing;
+}
+

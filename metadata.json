@@ -1,0 +1,8 @@
+{
+  "name": "Nexus Dashboard",
+  "description": "A premium, futuristic browser home screen featuring an interactive network visualization of your digital world.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
