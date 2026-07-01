@@ -9,9 +9,12 @@ interface NexusState {
   searchQuery: string;
   selectedCategory: string | null;
   selectedWebsiteId: string | null;
+  selectedWebsiteIds: string[];
+  hoveredWebsiteId: string | null;
   editingWebsiteId: string | null;
   isSidebarOpen: boolean;
   isUnlocked: boolean;
+  isKeyboardShortcutsOpen: boolean;
   userProfile: UserProfile;
   lastReset: number;
   fitToViewTrigger: number;
@@ -24,12 +27,17 @@ interface NexusState {
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string | null) => void;
   setSelectedWebsiteId: (id: string | null) => void;
+  setSelectedWebsiteIds: (ids: string[] | ((prev: string[]) => string[])) => void;
+  toggleWebsiteSelection: (id: string) => void;
+  clearWebsiteSelection: () => void;
+  setHoveredWebsiteId: (id: string | null) => void;
   setEditingWebsiteId: (id: string | null) => void;
   setGraphFilterCategory: (category: string | null) => void;
   setGraphFilterTag: (tag: string | null) => void;
   toggleSidebar: () => void;
   setIsSidebarOpen: (isOpen: boolean) => void;
   setIsUnlocked: (isUnlocked: boolean) => void;
+  setKeyboardShortcutsOpen: (isOpen: boolean) => void;
   setUserProfile: (profile: Partial<UserProfile>) => void;
   triggerReset: () => void;
   triggerFitToView: () => void;
@@ -44,9 +52,12 @@ export const useStore = create<NexusState>()(
       searchQuery: '',
       selectedCategory: null,
       selectedWebsiteId: null,
+      selectedWebsiteIds: [],
+      hoveredWebsiteId: null,
       editingWebsiteId: null,
       isSidebarOpen: false,
       isUnlocked: true,
+      isKeyboardShortcutsOpen: false,
       userProfile: {
         name: 'Alex Rivera',
         avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
@@ -105,12 +116,27 @@ export const useStore = create<NexusState>()(
       setSearchQuery: (searchQuery) => set({ searchQuery }),
       setSelectedCategory: (selectedCategory) => set({ selectedCategory }),
       setSelectedWebsiteId: (selectedWebsiteId) => set({ selectedWebsiteId }),
+      setSelectedWebsiteIds: (ids) => set((state) => ({
+        selectedWebsiteIds: typeof ids === 'function' ? ids(state.selectedWebsiteIds) : ids
+      })),
+      toggleWebsiteSelection: (id) => set((state) => {
+        const selected = state.selectedWebsiteIds.includes(id)
+          ? state.selectedWebsiteIds.filter(selectedId => selectedId !== id)
+          : [...state.selectedWebsiteIds, id];
+        return { 
+          selectedWebsiteIds: selected,
+          selectedWebsiteId: null 
+        };
+      }),
+      clearWebsiteSelection: () => set({ selectedWebsiteIds: [], selectedWebsiteId: null }),
+      setHoveredWebsiteId: (hoveredWebsiteId) => set({ hoveredWebsiteId }),
       setEditingWebsiteId: (editingWebsiteId) => set({ editingWebsiteId }),
       setGraphFilterCategory: (graphFilterCategory) => set({ graphFilterCategory }),
       setGraphFilterTag: (graphFilterTag) => set({ graphFilterTag }),
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       setIsSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
       setIsUnlocked: (isUnlocked) => set({ isUnlocked }),
+      setKeyboardShortcutsOpen: (isOpen) => set({ isKeyboardShortcutsOpen: isOpen }),
       setUserProfile: (profile) => set((state) => ({ 
         userProfile: { ...state.userProfile, ...profile } 
       })),

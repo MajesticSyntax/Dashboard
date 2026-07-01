@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Palette, Layout, Settings as SettingsIcon, Sliders, Type, Grid, Box, Download, Upload, Trash2, Shield, Lock, Database, KeyRound, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Palette, Layout, Settings as SettingsIcon, Sliders, Type, Grid, Box, Download, Upload, Trash2, Shield, Lock, Database, KeyRound, CheckCircle2, AlertCircle, Keyboard } from 'lucide-react';
 import { useImportExport } from '../hooks/useImportExport';
 import { useQueryClient } from '@tanstack/react-query';
 import { db } from '../db/db';
@@ -14,7 +14,7 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [resetConfirm, setResetConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState('Interface');
-  const { settings, setSettings, isUnlocked, setIsUnlocked } = useStore();
+  const { settings, setSettings, isUnlocked, setIsUnlocked, setKeyboardShortcutsOpen } = useStore();
   const { exportData, importData } = useImportExport();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -236,6 +236,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                      {tab}
                    </button>
                  ))}
+               </div>
+
+               <div className="mt-8 space-y-1 pt-4 border-t border-white/5">
+                 <button
+                   onClick={() => setKeyboardShortcutsOpen(true)}
+                   className="w-full text-left px-3 py-2 rounded-lg text-[10px] font-bold tracking-tight transition-all text-white/60 hover:bg-white/5 hover:text-white/95 flex items-center gap-2"
+                 >
+                   <Keyboard className="w-3 h-3 text-white/40" />
+                   Shortcuts
+                 </button>
                </div>
             </div>
 

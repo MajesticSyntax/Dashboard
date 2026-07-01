@@ -5,8 +5,8 @@ import { Website, GraphNode, GraphLink } from '../types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { db } from '../db/db';
 import { motion, AnimatePresence } from 'motion/react';
-import { Pencil, Trash2, Sliders, Play, Pause, RotateCcw, SkipForward, Activity, Plus as PlusIcon, Check, Sparkles, Info } from 'lucide-react';
-import { forceX, forceY } from 'd3-force';
+import { Pencil, Trash2, Sliders, Play, Pause, RotateCcw, SkipForward, Activity, Plus as PlusIcon, Check, Sparkles, Info, ExternalLink } from 'lucide-react';
+import { forceX, forceY, forceCollide } from 'd3-force';
 
 const imgCache = new Map<string, HTMLImageElement>();
 
@@ -29,9 +29,10 @@ const getDomain = (url: string) => {
 };
 
 export const GraphView: React.FC = () => {
-  const { searchQuery, selectedCategory, settings, setSelectedWebsiteId, lastReset, fitToViewTrigger, setEditingWebsiteId, graphFilterCategory, graphFilterTag } = useStore();
+  const { searchQuery, selectedCategory, settings, setSelectedWebsiteId, setHoveredWebsiteId, lastReset, fitToViewTrigger, setEditingWebsiteId, graphFilterCategory, graphFilterTag, selectedWebsiteIds, toggleWebsiteSelection, clearWebsiteSelection } = useStore();
   const fgRef = useRef<ForceGraphMethods>();
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastClickCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [clickedNodeId, setClickedNodeId] = useState<string | null>(null);
   const clickedNodeIdRef = useRef<string | null>(null);
@@ -89,6 +90,9 @@ export const GraphView: React.FC = () => {
 
   // Custom Color Router helper
   const getCustomColor = useCallback((w: Website) => {
+    if (w.isCustomColor) {
+      return w.color;
+    }
     for (const rule of colorRules) {
       if (!rule.active) continue;
       
@@ -122,6 +126,25 @@ export const GraphView: React.FC = () => {
     }
     return w.color || settings.nodeColor;
   }, [colorRules, settings.nodeColor]);
+
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        lastClickCoords.current = {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        };
+      }
+    };
+    window.addEventListener('mousemove', handleGlobalMouseMove, { capture: true, passive: true });
+    window.addEventListener('contextmenu', handleGlobalMouseMove, { capture: true, passive: true });
+    
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove as any, { capture: true });
+      window.removeEventListener('contextmenu', handleGlobalMouseMove as any, { capture: true });
+    };
+  }, []);
 
   useEffect(() => {
     const handleDocumentClick = (e: MouseEvent) => {
@@ -308,6 +331,18 @@ export const GraphView: React.FC = () => {
     }
   }, [fitToViewTrigger]);
 
+  // Force graph refresh when data or visual settings change
+  useEffect(() => {
+    if (fgRef.current) {
+      const fg = fgRef.current as any;
+      if (typeof fg.refresh === 'function') {
+        fg.refresh();
+      } else if (typeof fg.d3ReheatSimulation === 'function') {
+        fg.d3ReheatSimulation();
+      }
+    }
+  }, [graphData, settings, colorRules, clickedNodeId, graphFilterCategory, graphFilterTag]);
+
   // Keep slider bounds safe when collection size changes
   useEffect(() => {
     if (isTimelapseActive) {
@@ -371,6 +406,12 @@ export const GraphView: React.FC = () => {
       // Standard center force
       fgRef.current.d3Force('center')?.strength(gravity);
 
+      // Prevent nodes from overlapping for smoother, more stable layout
+      fgRef.current.d3Force('collide', forceCollide((node: any) => {
+        const size = (node.val || 4) * 1.5;
+        return node.isSun ? size + 15 : size + 5;
+      }).iterations(2));
+
       fgRef.current.d3ReheatSimulation();
     }
   }, [repulsion, gravity, linkDist, linkForceStrength]);
@@ -394,11 +435,26 @@ export const GraphView: React.FC = () => {
   }, []);
 
   const handleNodeClick = useCallback(async (node: any, event: any) => {
+    if (event && (event.button === 2 || event.ctrlKey)) {
+      return;
+    }
     if (event && event.stopPropagation) {
       event.stopPropagation();
     }
-    
+
     if (node.isSun) return;
+
+    if (event && (event.shiftKey || event.metaKey)) {
+      toggleWebsiteSelection(node.id);
+      return;
+    }
+    
+    if (fgRef.current && (!event || (!event.shiftKey && !event.metaKey))) {
+      // Center camera on clicked node
+      fgRef.current.centerAt(node.x, node.y, 400);
+    }
+    
+
     if (clickedNodeIdRef.current === node.id) {
       await db.incrementUsageCount(node.id);
       queryClient.invalidateQueries({ queryKey: ['websites'] });
@@ -406,41 +462,101 @@ export const GraphView: React.FC = () => {
       clickedNodeIdRef.current = null;
       setClickedNodeId(null);
       setSelectedWebsiteId(null);
+      clearWebsiteSelection();
     } else {
       clickedNodeIdRef.current = node.id;
       setClickedNodeId(node.id);
       setSelectedWebsiteId(node.id);
+      clearWebsiteSelection();
     }
-  }, [queryClient, setSelectedWebsiteId]);
+    closeContextMenu();
+  }, [queryClient, setSelectedWebsiteId, toggleWebsiteSelection, clearWebsiteSelection]);
 
-  const handleBackgroundClick = useCallback(() => {
+  const handleNodeRightClick = useCallback((node: any, event: any) => {
+    if (event && event.preventDefault) {
+      event.preventDefault();
+    }
+    if (event && event.stopPropagation) {
+      event.stopPropagation();
+    }
+    
+    if (node.isSun) return;
+
+    clickedNodeIdRef.current = node.id;
+    setClickedNodeId(node.id);
+    setSelectedWebsiteId(node.id);
+
+    // Calculate screen coordinate relative to containerRef
+    let x = lastClickCoords.current.x;
+    let y = lastClickCoords.current.y;
+
+    // Keep menu position inside bounds
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const menuWidth = 180;
+      const menuHeight = 240;
+      if (x + menuWidth > rect.width) {
+        x = rect.width - menuWidth - 10;
+      }
+      if (y + menuHeight > rect.height) {
+        y = rect.height - menuHeight - 10;
+      }
+      x = Math.max(10, x);
+      y = Math.max(10, y);
+    }
+
+    setContextMenu({
+      visible: true,
+      x: x,
+      y: y,
+      websiteId: node.id
+    });
+  }, [setSelectedWebsiteId]);
+
+  const handleBackgroundClick = useCallback((event?: any) => {
+    if (event && (event.button === 2 || event.ctrlKey)) {
+      return;
+    }
     clickedNodeIdRef.current = null;
     setClickedNodeId(null);
     setSelectedWebsiteId(null);
-  }, [setSelectedWebsiteId]);
+    clearWebsiteSelection();
+    closeContextMenu();
+  }, [setSelectedWebsiteId, clearWebsiteSelection]);
+
+  const handleUpdateNodeColor = useCallback(async (websiteId: string, color: string, reset: boolean = false) => {
+    if (reset) {
+      await db.websites.update(websiteId, {
+        color: '#3b82f6',
+        isCustomColor: false
+      });
+    } else {
+      await db.websites.update(websiteId, {
+        color: color,
+        isCustomColor: true
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ['websites'] });
+  }, [queryClient]);
 
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hoveredNodeRef = useRef<any>(null);
 
   const handleNodeHover = useCallback((node: any) => {
     hoveredNodeRef.current = node;
-
+    
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
     }
-
-    if (!clickedNodeIdRef.current) {
-      if (node) {
-        setSelectedWebsiteId(node.id);
-      } else {
-        // Delay hiding the sidebar to allow moving the mouse to it or to other nodes
-        hoverTimeoutRef.current = setTimeout(() => {
-          setSelectedWebsiteId(null);
-        }, 300);
-      }
+    
+    if (node && !node.isSun) {
+      hoverTimeoutRef.current = setTimeout(() => {
+        setHoveredWebsiteId(node.id);
+      }, 300); // 300ms delay to prevent flickering
+    } else {
+      setHoveredWebsiteId(null);
     }
-  }, [setSelectedWebsiteId]);
+  }, [setHoveredWebsiteId]);
 
   const nodePointerAreaPaint = useCallback((node: any, color: string, ctx: CanvasRenderingContext2D) => {
     const size = (node.val || 4) * 1.5;
@@ -478,7 +594,20 @@ export const GraphView: React.FC = () => {
       }
     }
 
-    if (clickedNodeId) {
+    if (selectedWebsiteIds && selectedWebsiteIds.length > 0) {
+      if (node.isSun) {
+        isBlurred = true;
+        isFocused = false;
+      } else {
+        if (selectedWebsiteIds.includes(node.id)) {
+          isFocused = true;
+          isBlurred = false;
+        } else {
+          isBlurred = true;
+          isFocused = false;
+        }
+      }
+    } else if (clickedNodeId) {
        if (node.isSun) {
           isBlurred = true;
           isFocused = false;
@@ -540,9 +669,21 @@ export const GraphView: React.FC = () => {
       ctx.fill();
     }
     
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 1 / globalScale;
-    ctx.stroke();
+    // Highlight selected nodes
+    if (selectedWebsiteIds && selectedWebsiteIds.includes(node.id)) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 3 / globalScale;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, size + 4 / globalScale, 0, 2 * Math.PI, false);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1 / globalScale;
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 1 / globalScale;
+      ctx.stroke();
+    }
     
     if (globalScale > 1.5 && node.name) {
       const label = node.name;
@@ -554,26 +695,23 @@ export const GraphView: React.FC = () => {
       ctx.fillText(label, node.x, node.y + size + 8 / globalScale);
     }
     ctx.restore();
-  }, [clickedNodeId, graphData.nodes, settings.glowingNodes, settings.glowStrength, graphFilterCategory, graphFilterTag]);
+  }, [clickedNodeId, selectedWebsiteIds, graphData.nodes, settings.glowingNodes, settings.glowStrength, graphFilterCategory, graphFilterTag]);
 
   return (
     <div 
       ref={containerRef}
+      onPointerDown={(e) => {
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          lastClickCoords.current = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+          };
+        }
+      }}
       className="w-full h-full relative overflow-hidden bg-white/[0.01] backdrop-blur-3xl rounded-[40px] border border-white/5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)]"
       onContextMenu={(e) => {
         e.preventDefault();
-        if (hoveredNodeRef.current && !hoveredNodeRef.current.isSun) {
-          const rect = containerRef.current?.getBoundingClientRect();
-          const x = rect ? e.clientX - rect.left : e.clientX;
-          const y = rect ? e.clientY - rect.top : e.clientY;
-          
-          setContextMenu({
-            visible: true,
-            x,
-            y,
-            websiteId: hoveredNodeRef.current.id
-          });
-        }
       }}
     >
       {dimensions.width > 0 && (
@@ -583,9 +721,12 @@ export const GraphView: React.FC = () => {
           height={dimensions.height}
           graphData={graphData}
           nodeLabel="name"
-        nodeColor={(node: any) => node.color}
-        nodeRelSize={settings.nodeSize}
-        linkCurvature={0}
+          nodeColor={(node: any) => node.color}
+          nodeRelSize={settings.nodeSize}
+          d3VelocityDecay={0.15}
+          d3AlphaDecay={0.01}
+          cooldownTime={15000}
+          linkCurvature={0}
         linkColor={(link: any) => {
           if (link.isParentLink) return 'transparent';
           if (link.isOrbitLink) return 'transparent';
@@ -637,33 +778,18 @@ export const GraphView: React.FC = () => {
         onNodeRightClick={(node: any, event: any) => {
           if (event && event.preventDefault) event.preventDefault();
           if (event && event.stopPropagation) event.stopPropagation();
-          
-          if (node.isSun) return;
-          
-          let x = event.clientX;
-          let y = event.clientY;
-          
-          if (fgRef.current) {
-            const coords = fgRef.current.graph2ScreenCoords(node.x, node.y);
-            x = coords.x;
-            y = coords.y;
-          } else if (containerRef.current && event.clientX !== undefined) {
+          if (containerRef.current && event && event.clientX !== undefined) {
             const rect = containerRef.current.getBoundingClientRect();
-            x = event.clientX - rect.left;
-            y = event.clientY - rect.top;
+            lastClickCoords.current = {
+              x: event.clientX - rect.left,
+              y: event.clientY - rect.top
+            };
           }
-
-          setContextMenu({
-            visible: true,
-            x: x,
-            y: y,
-            websiteId: node.id
-          });
+          handleNodeRightClick(node, event);
         }}
         onBackgroundClick={handleBackgroundClick}
         onBackgroundRightClick={(event: MouseEvent) => {
           event.preventDefault();
-          closeContextMenu();
         }}
         onNodeHover={handleNodeHover}
         onNodeDrag={handleNodeDrag}
@@ -695,6 +821,26 @@ export const GraphView: React.FC = () => {
             onContextMenu={(e) => e.preventDefault()}
           >
             <button
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (contextMenu.websiteId) {
+                  const node = await db.websites.get(contextMenu.websiteId);
+                  if (node) {
+                    await db.incrementUsageCount(node.id);
+                    queryClient.invalidateQueries({ queryKey: ['websites'] });
+                    window.open(node.url, '_blank');
+                  }
+                }
+                closeContextMenu();
+              }}
+              className="flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors text-left w-full"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-white/40" />
+              Visit Website
+            </button>
+            <div className="h-px bg-white/5 mx-2 my-1" />
+            <button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -723,6 +869,56 @@ export const GraphView: React.FC = () => {
               <Pencil className="w-3.5 h-3.5 text-white/40" />
               Edit
             </button>
+            <div className="h-px bg-white/5 mx-2 my-1" />
+            <div className="px-4 py-2 flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <span className="text-[10px] font-bold text-white/40 uppercase tracking-[0.05em]">Node Color</span>
+              <div className="flex flex-wrap gap-1.5 items-center">
+                {['#ef4444', '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6', '#10b981', '#f59e0b', '#f97316'].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (contextMenu.websiteId) {
+                        await handleUpdateNodeColor(contextMenu.websiteId, c);
+                      }
+                    }}
+                    className="w-4 h-4 rounded-full border border-white/10 hover:scale-125 transition-transform cursor-pointer relative shrink-0"
+                    style={{ backgroundColor: c }}
+                    title={c}
+                  />
+                ))}
+                {/* Custom color picker */}
+                <label className="w-4 h-4 rounded-full border border-white/10 hover:scale-125 transition-transform cursor-pointer flex items-center justify-center bg-white/5 hover:bg-white/10 overflow-hidden relative shrink-0" title="Custom color">
+                  <input
+                    type="color"
+                    onChange={async (e) => {
+                      if (contextMenu.websiteId) {
+                        await handleUpdateNodeColor(contextMenu.websiteId, e.target.value);
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-tr from-pink-500 via-red-500 to-yellow-500" />
+                </label>
+              </div>
+              <button
+                type="button"
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (contextMenu.websiteId) {
+                    await handleUpdateNodeColor(contextMenu.websiteId, '', true);
+                  }
+                  closeContextMenu();
+                }}
+                className="text-[10px] text-left text-white/50 hover:text-white mt-1 underline decoration-dotted underline-offset-2 transition-colors w-max"
+              >
+                Reset to Default/Rules
+              </button>
+            </div>
+            <div className="h-px bg-white/5 mx-2 my-1" />
             <button
               onClick={async (e) => {
                 e.preventDefault();

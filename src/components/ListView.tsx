@@ -13,9 +13,10 @@ interface WebsiteListItemProps {
   onVisit: (id: string, url: string) => void;
   onContextMenu: (e: React.MouseEvent, websiteId: string) => void;
   onDeleteTrigger: (e: React.MouseEvent, id: string, name: string) => void;
+  onEditTrigger: (e: React.MouseEvent, id: string) => void;
 }
 
-const WebsiteListItem = memo(({ website, onVisit, onContextMenu, onDeleteTrigger }: WebsiteListItemProps) => (
+const WebsiteListItem = memo(({ website, onVisit, onContextMenu, onDeleteTrigger, onEditTrigger }: WebsiteListItemProps) => (
   <motion.div
     layout
     initial={{ opacity: 0, scale: 0.98 }}
@@ -72,6 +73,16 @@ const WebsiteListItem = memo(({ website, onVisit, onContextMenu, onDeleteTrigger
           title="Visit Website"
         >
           <ExternalLink className="w-3.5 h-3.5" />
+        </button>
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            onEditTrigger(e, website.id);
+          }}
+          className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-all active:scale-90"
+          title="Edit Website"
+        >
+          <Pencil className="w-3.5 h-3.5" />
         </button>
         <button 
           onClick={(e) => onDeleteTrigger(e, website.id, website.name)}
@@ -145,6 +156,11 @@ export const ListView: React.FC = () => {
     window.open(url, '_blank');
   }, []);
 
+  const handleEditTrigger = useCallback((e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setEditingWebsiteId(id);
+  }, [setEditingWebsiteId]);
+
   const handleDeleteTrigger = useCallback((e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation();
     setDeleteTargetId(id);
@@ -169,6 +185,7 @@ export const ListView: React.FC = () => {
             onVisit={handleVisit}
             onContextMenu={handleContextMenu}
             onDeleteTrigger={handleDeleteTrigger}
+            onEditTrigger={handleEditTrigger}
           />
         ))}
       </AnimatePresence>

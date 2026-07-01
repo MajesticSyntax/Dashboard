@@ -20,10 +20,14 @@ export const useImportExport = () => {
     const a = document.createElement('a');
     a.href = url;
     a.download = `nexus-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1000);
   };
 
   const importData = async (file: File) => {
@@ -33,8 +37,10 @@ export const useImportExport = () => {
         try {
           const data = JSON.parse(e.target?.result as string);
           if (data.websites) {
-            await db.websites.clear();
-            await db.websites.bulkAdd(data.websites);
+            await db.transaction('rw', db.websites, async () => {
+              await db.websites.clear();
+              await db.websites.bulkAdd(data.websites);
+            });
           }
           if (data.settings) {
             setSettings(data.settings);

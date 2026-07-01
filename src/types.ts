@@ -12,6 +12,7 @@ export interface Website {
   logo?: string;
   category: Category;
   color: string;
+  isCustomColor?: boolean;
   favorite: boolean;
   usageCount: number;
   pinned: boolean;

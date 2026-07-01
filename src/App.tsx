@@ -6,9 +6,13 @@ import { GraphView } from './components/GraphView';
 import { GridView } from './components/GridView';
 import { ListView } from './components/ListView';
 import { NodeDetails } from './components/NodeDetails';
+import { HoverNodeDetails } from './components/HoverNodeDetails';
+import { BatchActionsPanel } from './components/BatchActionsPanel';
 import { AddWebsiteModal } from './components/AddWebsiteModal';
 import { SettingsModal } from './components/SettingsModal';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { ProfileModal } from './components/ProfileModal';
+import { FirstTimeIdentityModal } from './components/FirstTimeIdentityModal';
 import { LockScreen } from './components/LockScreen';
 import { GraphFilters } from './components/GraphFilters';
 import { useStore } from './store/useStore';
@@ -237,6 +241,8 @@ function NexusApp() {
             </AnimatePresence>
 
             {viewMode === 'graph' && <NodeDetails />}
+            {viewMode === 'graph' && <HoverNodeDetails />}
+            {viewMode === 'graph' && <BatchActionsPanel />}
 
             {/* Active Nodes & Filters - Top Right - Only in Graph View */}
             {viewMode === 'graph' && (
@@ -355,7 +361,9 @@ function NexusApp() {
 
       <AddWebsiteModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <KeyboardShortcutsModal />
       <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+      <FirstTimeIdentityModal />
 
       <AnimatePresence>
         {!isUnlocked && settings.pinEnabled && settings.pinCode && (

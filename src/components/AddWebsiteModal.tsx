@@ -67,6 +67,7 @@ export const AddWebsiteModal: React.FC<AddWebsiteModalProps> = ({ isOpen, onClos
         url: formData.url,
         category: formData.category,
         color: formData.color,
+        isCustomColor: true,
         description: formData.description,
         tags: parsedTags,
       });
@@ -77,6 +78,7 @@ export const AddWebsiteModal: React.FC<AddWebsiteModalProps> = ({ isOpen, onClos
       const website = {
         ...formData,
         id,
+        isCustomColor: true,
         favorite: false,
         pinned: false,
         usageCount: 0,
