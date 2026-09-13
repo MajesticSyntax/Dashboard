@@ -11,6 +11,7 @@ import { BatchActionsPanel } from './components/BatchActionsPanel';
 import { AddWebsiteModal } from './components/AddWebsiteModal';
 import { SettingsModal } from './components/SettingsModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { QuickSearchModal } from './components/QuickSearchModal';
 import { ProfileModal } from './components/ProfileModal';
 import { FirstTimeIdentityModal } from './components/FirstTimeIdentityModal';
 import { LockScreen } from './components/LockScreen';
@@ -18,7 +19,7 @@ import { GraphFilters } from './components/GraphFilters';
 import { useStore } from './store/useStore';
 import { seedInitialData, db } from './db/db';
 import { motion, AnimatePresence } from 'motion/react';
-import { Maximize2, RotateCcw, LayoutGrid, Plus, MoreVertical, Focus, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Maximize2, RotateCcw, LayoutGrid, Plus, MoreVertical, Focus, X, ChevronUp, ChevronDown, Search } from 'lucide-react';
 import { cn } from './lib/utils';
 
 const queryClient = new QueryClient();
@@ -57,7 +58,24 @@ const getGlowColor = (bgColor: string, theme: string, alpha: number) => {
 };
 
 function NexusApp() {
-  const { viewMode, settings, setSearchQuery, triggerReset, triggerFitToView, isSidebarOpen, toggleSidebar, setIsSidebarOpen, userProfile, editingWebsiteId, selectedWebsiteId, isUnlocked, setIsUnlocked } = useStore();
+  const { 
+    viewMode, 
+    settings, 
+    searchQuery,
+    setSearchQuery, 
+    isQuickSearchOpen,
+    setQuickSearchOpen,
+    triggerReset, 
+    triggerFitToView, 
+    isSidebarOpen, 
+    toggleSidebar, 
+    setIsSidebarOpen, 
+    userProfile, 
+    editingWebsiteId, 
+    selectedWebsiteId, 
+    isUnlocked, 
+    setIsUnlocked 
+  } = useStore();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -98,18 +116,61 @@ function NexusApp() {
       queryClient.invalidateQueries({ queryKey: ['websites'] });
     };
     init();
-    
+  }, [queryClient]);
+
+  // Global Keyboard Shortcuts including Type-to-Open
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      // 1. Hotkey: Ctrl+K or Cmd+K
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
-        searchInput?.focus();
+        setQuickSearchOpen(true);
+        return;
+      }
+
+      // Check if user is typing in an input, textarea, select, or editable element
+      const target = e.target as HTMLElement;
+      const isInsideInput = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+
+      // If user is focused on an input, let normal typing occur
+      if (isInsideInput) return;
+
+      // 2. Hotkey: '/' opens quick open if not inside an input
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setQuickSearchOpen(true);
+        return;
+      }
+
+      // 3. Hotkey: Escape closes quick search if open
+      if (e.key === 'Escape') {
+        if (isQuickSearchOpen) {
+          setQuickSearchOpen(false);
+          return;
+        }
+      }
+
+      // If other interactive modals are open or locked, do not intercept keys
+      if (isSettingsOpen || isAddModalOpen || isProfileOpen || !isUnlocked) {
+        return;
+      }
+
+      // 4. Type-to-Open: Any letter or number typed directly triggers quick open
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== ' ') {
+        e.preventDefault();
+        setSearchQuery(e.key);
+        setQuickSearchOpen(true);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [queryClient]);
+  }, [isQuickSearchOpen, setQuickSearchOpen, setSearchQuery, isSettingsOpen, isAddModalOpen, isProfileOpen, isUnlocked]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -255,6 +316,21 @@ function NexusApp() {
               </div>
             )}
 
+            {/* Quick Open Launcher Button - Top Left - Graph View */}
+            {viewMode === 'graph' && (
+              <div className="absolute top-8 left-8 z-40">
+                <button
+                  onClick={() => setQuickSearchOpen(true)}
+                  className="flex items-center gap-2.5 px-4 py-2 rounded-full border border-white/10 bg-black/40 hover:bg-black/60 backdrop-blur-xl text-white/60 hover:text-white transition-all shadow-lg group cursor-pointer hover:border-blue-500/30"
+                  title="Type any letter or word to open a node (⌘K)"
+                >
+                  <Search className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-medium text-white/80 group-hover:text-white">Quick Open</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] font-mono text-white/40 border border-white/10 font-bold">⌘K</kbd>
+                </button>
+              </div>
+            )}
+
             {/* Welcome Message */}
             <AnimatePresence>
               {viewMode === 'graph' && (
@@ -306,6 +382,7 @@ function NexusApp() {
 
                       {/* Rest of the controls */}
                       {[
+                        { icon: Search, label: 'Quick Open (⌘K / Type)', onClick: () => setQuickSearchOpen(true) },
                         { icon: Plus, label: 'Add Website', onClick: () => setIsAddModalOpen(true) },
                         { icon: Focus, label: 'Fit to View', onClick: () => triggerFitToView() },
                         { icon: Maximize2, label: 'Fullscreen', onClick: toggleFullscreen },
@@ -362,6 +439,7 @@ function NexusApp() {
       <AddWebsiteModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       <KeyboardShortcutsModal />
+      <QuickSearchModal />
       <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <FirstTimeIdentityModal />
 

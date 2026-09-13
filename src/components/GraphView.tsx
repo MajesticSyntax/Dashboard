@@ -29,7 +29,7 @@ const getDomain = (url: string) => {
 };
 
 export const GraphView: React.FC = () => {
-  const { searchQuery, selectedCategory, settings, setSelectedWebsiteId, setHoveredWebsiteId, lastReset, fitToViewTrigger, setEditingWebsiteId, graphFilterCategory, graphFilterTag, selectedWebsiteIds, toggleWebsiteSelection, clearWebsiteSelection } = useStore();
+  const { searchQuery, selectedCategory, settings, selectedWebsiteId, setSelectedWebsiteId, setHoveredWebsiteId, lastReset, fitToViewTrigger, setEditingWebsiteId, graphFilterCategory, graphFilterTag, selectedWebsiteIds, toggleWebsiteSelection, clearWebsiteSelection } = useStore();
   const fgRef = useRef<ForceGraphMethods>();
   const containerRef = useRef<HTMLDivElement>(null);
   const lastClickCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -306,8 +306,7 @@ export const GraphView: React.FC = () => {
   useEffect(() => {
     if (fgRef.current && lastReset > 0) {
       // 1. Clear fixed positions if nodes were dragged
-      const currentNodes = fgRef.current.graphData().nodes;
-      currentNodes.forEach((node: any) => {
+      graphData.nodes.forEach((node: any) => {
         if (!node.isSun) {
           node.fx = undefined;
           node.fy = undefined;
@@ -318,18 +317,38 @@ export const GraphView: React.FC = () => {
       });
 
       // 2. Reheat simulation
-      fgRef.current.d3ReheatSimulation();
+      if (typeof (fgRef.current as any).d3ReheatSimulation === 'function') {
+        (fgRef.current as any).d3ReheatSimulation();
+      }
       
       // 3. Zoom and center
-      fgRef.current.zoomToFit(800, 150);
+      if (typeof (fgRef.current as any).zoomToFit === 'function') {
+        (fgRef.current as any).zoomToFit(800, 150);
+      }
     }
-  }, [lastReset]);
+  }, [lastReset, graphData]);
 
   useEffect(() => {
     if (fgRef.current && fitToViewTrigger > 0) {
-      fgRef.current.zoomToFit(800, 150);
+      if (typeof (fgRef.current as any).zoomToFit === 'function') {
+        (fgRef.current as any).zoomToFit(800, 150);
+      }
     }
   }, [fitToViewTrigger]);
+
+  // Center camera on externally selected node (e.g. from quick open or search)
+  useEffect(() => {
+    if (selectedWebsiteId && fgRef.current) {
+      const target = graphData.nodes.find((n: any) => n.id === selectedWebsiteId);
+      if (target && typeof target.x === 'number' && typeof target.y === 'number') {
+        if (typeof (fgRef.current as any).centerAt === 'function') {
+          (fgRef.current as any).centerAt(target.x, target.y, 450);
+        }
+        setClickedNodeId(selectedWebsiteId);
+        clickedNodeIdRef.current = selectedWebsiteId;
+      }
+    }
+  }, [selectedWebsiteId, graphData]);
 
   // Force graph refresh when data or visual settings change
   useEffect(() => {
@@ -376,12 +395,13 @@ export const GraphView: React.FC = () => {
 
   // Live update d3-force simulation when variables are adjusted
   useEffect(() => {
-    if (fgRef.current) {
+    if (fgRef.current && typeof (fgRef.current as any).d3Force === 'function') {
+      const fg = fgRef.current as any;
       // 1. Every single node acts like a negatively charged particle. They all push away from each other.
-      fgRef.current.d3Force('charge')?.strength(repulsion); 
+      fg.d3Force('charge')?.strength(repulsion); 
       
       // 2. Links act like virtual rubber bands or springs.
-      fgRef.current.d3Force('link')
+      fg.d3Force('link')
         ?.distance((link: any) => {
           if (link.isParentLink) return linkDist * 1.5;
           const isChildConnection = link.isCategoryChildLink;
@@ -400,27 +420,29 @@ export const GraphView: React.FC = () => {
         });
 
       // 3. Invisible gravitational pull toward the exact coordinates (0,0) of the screen.
-      fgRef.current.d3Force('x', forceX(0).strength(gravity));
-      fgRef.current.d3Force('y', forceY(0).strength(gravity));
+      fg.d3Force('x', forceX(0).strength(gravity));
+      fg.d3Force('y', forceY(0).strength(gravity));
       
       // Standard center force
-      fgRef.current.d3Force('center')?.strength(gravity);
+      fg.d3Force('center')?.strength(gravity);
 
       // Prevent nodes from overlapping for smoother, more stable layout
-      fgRef.current.d3Force('collide', forceCollide((node: any) => {
+      fg.d3Force('collide', forceCollide((node: any) => {
         const size = (node.val || 4) * 1.5;
         return node.isSun ? size + 15 : size + 5;
       }).iterations(2));
 
-      fgRef.current.d3ReheatSimulation();
+      if (typeof fg.d3ReheatSimulation === 'function') {
+        fg.d3ReheatSimulation();
+      }
     }
   }, [repulsion, gravity, linkDist, linkForceStrength]);
 
   const handleNodeDrag = useCallback((node: any) => {
     node.fx = node.x;
     node.fy = node.y;
-    if (fgRef.current) {
-      fgRef.current.d3ReheatSimulation();
+    if (fgRef.current && typeof (fgRef.current as any).d3ReheatSimulation === 'function') {
+      (fgRef.current as any).d3ReheatSimulation();
     }
   }, []);
 
@@ -428,8 +450,8 @@ export const GraphView: React.FC = () => {
     if (!node.isSun) {
       node.fx = undefined;
       node.fy = undefined;
-      if (fgRef.current) {
-        fgRef.current.d3ReheatSimulation();
+      if (fgRef.current && typeof (fgRef.current as any).d3ReheatSimulation === 'function') {
+        (fgRef.current as any).d3ReheatSimulation();
       }
     }
   }, []);
@@ -451,7 +473,9 @@ export const GraphView: React.FC = () => {
     
     if (fgRef.current && (!event || (!event.shiftKey && !event.metaKey))) {
       // Center camera on clicked node
-      fgRef.current.centerAt(node.x, node.y, 400);
+      if (typeof (fgRef.current as any).centerAt === 'function' && typeof node.x === 'number' && typeof node.y === 'number') {
+        (fgRef.current as any).centerAt(node.x, node.y, 400);
+      }
     }
     
 
@@ -797,7 +821,9 @@ export const GraphView: React.FC = () => {
         cooldownTicks={150}
         onEngineStop={() => {
           if (fgRef.current && lastReset === 0) {
-            fgRef.current.zoomToFit(800, 150);
+            if (typeof (fgRef.current as any).zoomToFit === 'function') {
+              (fgRef.current as any).zoomToFit(800, 150);
+            }
           }
         }}
         nodePointerAreaPaint={nodePointerAreaPaint}

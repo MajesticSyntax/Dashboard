@@ -8,11 +8,15 @@ export const KeyboardShortcutsModal: React.FC = () => {
 
   const shortcuts = [
     {
-      category: 'Global',
+      category: 'Type-to-Open & Search (All Views)',
       items: [
-        { keys: ['⌘', 'K'], label: 'Global Search (Mac)' },
-        { keys: ['Ctrl', 'K'], label: 'Global Search (Windows)' },
-        { keys: ['Esc'], label: 'Close Modals / Deselect' },
+        { keys: ['Any letter/word'], label: 'Type to open first ascending match' },
+        { keys: ['↵ Enter'], label: 'Open highlighted / 1st ascending match' },
+        { keys: ['⌘', 'K'], label: 'Quick Open Launcher (Mac)' },
+        { keys: ['Ctrl', 'K'], label: 'Quick Open Launcher (Windows)' },
+        { keys: ['/'], label: 'Quick Open Launcher' },
+        { keys: ['↑', '↓'], label: 'Navigate ascending search matches' },
+        { keys: ['Esc'], label: 'Close Quick Open / Modals' },
       ],
     },
     {

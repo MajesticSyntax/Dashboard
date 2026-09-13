@@ -15,6 +15,7 @@ interface NexusState {
   isSidebarOpen: boolean;
   isUnlocked: boolean;
   isKeyboardShortcutsOpen: boolean;
+  isQuickSearchOpen: boolean;
   userProfile: UserProfile;
   lastReset: number;
   fitToViewTrigger: number;
@@ -38,6 +39,7 @@ interface NexusState {
   setIsSidebarOpen: (isOpen: boolean) => void;
   setIsUnlocked: (isUnlocked: boolean) => void;
   setKeyboardShortcutsOpen: (isOpen: boolean) => void;
+  setQuickSearchOpen: (isOpen: boolean) => void;
   setUserProfile: (profile: Partial<UserProfile>) => void;
   triggerReset: () => void;
   triggerFitToView: () => void;
@@ -58,6 +60,7 @@ export const useStore = create<NexusState>()(
       isSidebarOpen: false,
       isUnlocked: true,
       isKeyboardShortcutsOpen: false,
+      isQuickSearchOpen: false,
       userProfile: {
         name: 'Alex Rivera',
         avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
@@ -137,6 +140,7 @@ export const useStore = create<NexusState>()(
       setIsSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
       setIsUnlocked: (isUnlocked) => set({ isUnlocked }),
       setKeyboardShortcutsOpen: (isOpen) => set({ isKeyboardShortcutsOpen: isOpen }),
+      setQuickSearchOpen: (isOpen) => set({ isQuickSearchOpen: isOpen }),
       setUserProfile: (profile) => set((state) => ({ 
         userProfile: { ...state.userProfile, ...profile } 
       })),
