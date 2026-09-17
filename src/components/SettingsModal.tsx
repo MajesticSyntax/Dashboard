@@ -193,7 +193,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   };
 
   const themes = [
-    { id: 'dark', label: 'Obsidian Dark', colors: ['#09090b', '#18181b'], nodeColor: '#10b981', accentColor: '#10b981' },
+    { id: 'obsidian', label: 'Obsidian', colors: ['#202020', '#181818'], nodeColor: '#dcdcdc', accentColor: '#8b5cf6' },
     { id: 'minimal', label: 'Eclipse', colors: ['#050505', '#1a1a1a'], nodeColor: '#9ca3af', accentColor: '#522C5D' },
     { id: 'glass', label: 'Cosmos', colors: ['#000814', '#001d3d'], nodeColor: '#3b82f6', accentColor: '#3b82f6' },
     { id: 'nebula', label: 'Nebula', colors: ['#0f0a1a', '#1a142e'], nodeColor: '#c084fc', accentColor: '#c084fc' },
@@ -288,9 +288,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                               }
                             }}
                             className={`p-2.5 rounded-xl border backdrop-blur-sm transition-all ${
-                              settings.theme === t.id 
-                                ? t.id === 'minimal' ? 'border-[#522C5D]/50 bg-white/10 ring-1 ring-[#522C5D]/30' : 'border-blue-500/50 bg-white/10' 
-                                : t.id === 'minimal' ? 'border-white/5 bg-white/5 hover:border-[#522C5D]/40 hover:bg-[#522C5D]/5 text-white/90' : 'border-white/5 bg-white/5 hover:bg-white/10'
+                              settings.theme === t.id || (t.id === 'obsidian' && settings.theme === 'dark')
+                                ? t.id === 'obsidian' 
+                                  ? 'border-white/40 bg-white/10 ring-1 ring-white/20'
+                                  : t.id === 'minimal' 
+                                  ? 'border-[#522C5D]/50 bg-white/10 ring-1 ring-[#522C5D]/30' 
+                                  : 'border-blue-500/50 bg-white/10' 
+                                : t.id === 'minimal' 
+                                ? 'border-white/5 bg-white/5 hover:border-[#522C5D]/40 hover:bg-[#522C5D]/5 text-white/90' 
+                                : 'border-white/5 bg-white/5 hover:bg-white/10'
                             }`}
                           >
                             <div className="flex gap-1 mb-2">

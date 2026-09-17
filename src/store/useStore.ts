@@ -19,6 +19,8 @@ interface NexusState {
   userProfile: UserProfile;
   lastReset: number;
   fitToViewTrigger: number;
+  zoomInTrigger: number;
+  zoomOutTrigger: number;
   categories: CategoryItem[];
   graphFilterCategory: string | null;
   graphFilterTag: string | null;
@@ -43,6 +45,8 @@ interface NexusState {
   setUserProfile: (profile: Partial<UserProfile>) => void;
   triggerReset: () => void;
   triggerFitToView: () => void;
+  triggerZoomIn: () => void;
+  triggerZoomOut: () => void;
   addCategory: (category: CategoryItem) => void;
   deleteCategory: (name: string) => Promise<void>;
 }
@@ -68,6 +72,8 @@ export const useStore = create<NexusState>()(
       },
       lastReset: 0,
       fitToViewTrigger: 0,
+      zoomInTrigger: 0,
+      zoomOutTrigger: 0,
       categories: [
         { name: 'AI', color: '#94a3b8' },
         { name: 'Development', color: '#94a3b8' },
@@ -146,6 +152,8 @@ export const useStore = create<NexusState>()(
       })),
       triggerReset: () => set({ lastReset: Date.now() }),
       triggerFitToView: () => set({ fitToViewTrigger: Date.now() }),
+      triggerZoomIn: () => set((state) => ({ zoomInTrigger: (state.zoomInTrigger || 0) + 1 })),
+      triggerZoomOut: () => set((state) => ({ zoomOutTrigger: (state.zoomOutTrigger || 0) + 1 })),
       addCategory: (category) => set((state) => {
         // Prevent duplicate categories
         if (state.categories.some(c => c.name.toLowerCase() === category.name.toLowerCase())) {

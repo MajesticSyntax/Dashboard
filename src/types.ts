@@ -43,7 +43,7 @@ export interface AppSettings {
   cornerRadius: number;
   blurAmount: number;
   animationSpeed: number;
-  theme: 'dark' | 'light' | 'minimal' | 'glass' | 'nebula';
+  theme: 'dark' | 'light' | 'minimal' | 'glass' | 'nebula' | 'obsidian';
   glowingNodes: boolean;
   mouseHoverEffect: boolean;
   backgroundImage?: string;

@@ -36,12 +36,40 @@ export const seedInitialData = async () => {
         category: 'Search',
         color: '#4285F4',
         favorite: true,
-        usageCount: 0,
+        usageCount: 15,
         pinned: true,
         tags: ['search', 'main'],
         description: 'Primary search engine',
         lastOpened: Date.now(),
-        createdAt: Date.now(),
+        createdAt: Date.now() - 60000,
+      },
+      {
+        id: '1-drive',
+        name: 'Google Drive',
+        url: 'https://drive.google.com',
+        category: 'Search',
+        color: '#4285F4',
+        favorite: true,
+        usageCount: 6,
+        pinned: false,
+        tags: ['google', 'cloud', 'storage'],
+        description: 'Google cloud storage subdomain',
+        lastOpened: Date.now(),
+        createdAt: Date.now() - 40000,
+      },
+      {
+        id: '1-docs',
+        name: 'Google Docs',
+        url: 'https://docs.google.com',
+        category: 'Search',
+        color: '#4285F4',
+        favorite: false,
+        usageCount: 4,
+        pinned: false,
+        tags: ['google', 'documents', 'office'],
+        description: 'Google documents subdomain',
+        lastOpened: Date.now(),
+        createdAt: Date.now() - 20000,
       },
       {
         id: '2',
@@ -50,7 +78,7 @@ export const seedInitialData = async () => {
         category: 'Development',
         color: '#333',
         favorite: true,
-        usageCount: 0,
+        usageCount: 10,
         pinned: true,
         tags: ['code', 'git'],
         description: 'Code hosting',
@@ -64,7 +92,7 @@ export const seedInitialData = async () => {
         category: 'AI',
         color: '#10A37F',
         favorite: true,
-        usageCount: 0,
+        usageCount: 8,
         pinned: true,
         tags: ['ai', 'chat'],
         description: 'AI assistant',
@@ -78,7 +106,7 @@ export const seedInitialData = async () => {
         category: 'Entertainment',
         color: '#FF0000',
         favorite: false,
-        usageCount: 0,
+        usageCount: 5,
         pinned: false,
         tags: ['video', 'watch'],
         description: 'Video sharing',
@@ -92,7 +120,7 @@ export const seedInitialData = async () => {
         category: 'Design',
         color: '#F24E1E',
         favorite: true,
-        usageCount: 0,
+        usageCount: 3,
         pinned: false,
         tags: ['design', 'ui'],
         description: 'Design tool',
@@ -101,5 +129,42 @@ export const seedInitialData = async () => {
       }
     ];
     await db.websites.bulkPut(initialWebsites);
+  } else {
+    // If user already initialized their database, check if they have subdomains to showcase
+    const all = await db.websites.toArray();
+    const hasGoogle = all.some(w => w.url && w.url.includes('google.com'));
+    const hasGoogleSub = all.some(w => w.url && (w.url.includes('drive.google.com') || w.url.includes('docs.google.com') || w.url.includes('mail.google.com')));
+    if (hasGoogle && !hasGoogleSub) {
+      await db.websites.bulkPut([
+        {
+          id: 'sub-drive-' + Date.now(),
+          name: 'Google Drive',
+          url: 'https://drive.google.com',
+          category: 'Search',
+          color: '#4285F4',
+          favorite: false,
+          usageCount: 4,
+          pinned: false,
+          tags: ['google', 'storage'],
+          description: 'Google Drive subdomain',
+          lastOpened: Date.now(),
+          createdAt: Date.now(),
+        },
+        {
+          id: 'sub-docs-' + (Date.now() + 1),
+          name: 'Google Docs',
+          url: 'https://docs.google.com',
+          category: 'Search',
+          color: '#4285F4',
+          favorite: false,
+          usageCount: 3,
+          pinned: false,
+          tags: ['google', 'docs'],
+          description: 'Google Docs subdomain',
+          lastOpened: Date.now(),
+          createdAt: Date.now(),
+        }
+      ]);
+    }
   }
 };

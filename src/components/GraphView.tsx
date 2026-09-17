@@ -5,8 +5,9 @@ import { Website, GraphNode, GraphLink } from '../types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { db } from '../db/db';
 import { motion, AnimatePresence } from 'motion/react';
-import { Pencil, Trash2, Sliders, Play, Pause, RotateCcw, SkipForward, Activity, Plus as PlusIcon, Check, Sparkles, Info, ExternalLink } from 'lucide-react';
+import { Pencil, Trash2, Sliders, Play, Pause, RotateCcw, SkipForward, Activity, Plus as PlusIcon, Check, Sparkles, Info, ExternalLink, ZoomIn, ZoomOut, Minus, Focus } from 'lucide-react';
 import { forceX, forceY, forceCollide } from 'd3-force';
+import { getCleanHostname, getRootDomain } from '../lib/utils';
 
 const imgCache = new Map<string, HTMLImageElement>();
 
@@ -20,22 +21,36 @@ const hexToAlpha = (hex: string, alpha: string) => {
   return hex;
 };
 
-const getDomain = (url: string) => {
-  try {
-    return new URL(url).hostname.replace('www.', '');
-  } catch (e) {
-    return '';
-  }
-};
-
 export const GraphView: React.FC = () => {
-  const { searchQuery, selectedCategory, settings, selectedWebsiteId, setSelectedWebsiteId, setHoveredWebsiteId, lastReset, fitToViewTrigger, setEditingWebsiteId, graphFilterCategory, graphFilterTag, selectedWebsiteIds, toggleWebsiteSelection, clearWebsiteSelection } = useStore();
+  const { 
+    searchQuery, 
+    selectedCategory, 
+    settings, 
+    selectedWebsiteId, 
+    setSelectedWebsiteId, 
+    setHoveredWebsiteId, 
+    lastReset, 
+    fitToViewTrigger, 
+    zoomInTrigger, 
+    zoomOutTrigger, 
+    triggerFitToView,
+    triggerZoomIn,
+    triggerZoomOut,
+    setEditingWebsiteId, 
+    graphFilterCategory, 
+    graphFilterTag, 
+    selectedWebsiteIds, 
+    toggleWebsiteSelection, 
+    clearWebsiteSelection 
+  } = useStore();
   const fgRef = useRef<ForceGraphMethods>();
   const containerRef = useRef<HTMLDivElement>(null);
   const lastClickCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [clickedNodeId, setClickedNodeId] = useState<string | null>(null);
   const clickedNodeIdRef = useRef<string | null>(null);
+  const zoomDisplayRef = useRef<HTMLButtonElement>(null);
+  const zoomPercentRef = useRef<number>(100);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleteTargetName, setDeleteTargetName] = useState('');
   const [contextMenu, setContextMenu] = useState<{
@@ -90,6 +105,9 @@ export const GraphView: React.FC = () => {
 
   // Custom Color Router helper
   const getCustomColor = useCallback((w: Website) => {
+    if (settings.theme === 'obsidian' || settings.theme === 'dark') {
+      return '#dcdcdc';
+    }
     if (w.isCustomColor) {
       return w.color;
     }
@@ -125,7 +143,7 @@ export const GraphView: React.FC = () => {
       }
     }
     return w.color || settings.nodeColor;
-  }, [colorRules, settings.nodeColor]);
+  }, [colorRules, settings.nodeColor, settings.theme]);
 
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
@@ -231,37 +249,71 @@ export const GraphView: React.FC = () => {
     const links: any[] = [];
     const categories = Array.from(new Set(activeWebsites.map(w => w.category)));
 
-    // 1. Group by Domain
-    const domainMap = new Map<string, any[]>();
+    // 1. Group by Root Domain and Subdomains (Hierarchical Connection)
+    const rootDomainMap = new Map<string, any[]>();
     nodes.forEach(node => {
       if (!node.isSun && node.url) {
-        const domain = getDomain(node.url);
-        if (domain) {
-          if (!domainMap.has(domain)) domainMap.set(domain, []);
-          domainMap.get(domain)?.push(node);
+        const cleanHost = getCleanHostname(node.url);
+        const rootDomain = getRootDomain(cleanHost);
+        node.cleanHost = cleanHost;
+        node.rootDomain = rootDomain;
+        if (rootDomain) {
+          if (!rootDomainMap.has(rootDomain)) rootDomainMap.set(rootDomain, []);
+          rootDomainMap.get(rootDomain)?.push(node);
         }
       }
     });
 
     const mainNodes: string[] = [];
 
-    domainMap.forEach((domainNodes) => {
-      domainNodes.sort((a, b) => (a.url?.length || 0) - (b.url?.length || 0));
-      
+    rootDomainMap.forEach((domainNodes, rootDomain) => {
+      if (domainNodes.length === 0) return;
+
+      // Sort order:
+      // 1. Exact apex/root domain match (e.g. google.com vs mail.google.com)
+      // 2. Fewest subdomain levels (e.g. app.domain.com vs dev.app.domain.com)
+      // 3. Shortest URL
+      domainNodes.sort((a, b) => {
+        const aIsExact = a.cleanHost === rootDomain ? 1 : 0;
+        const bIsExact = b.cleanHost === rootDomain ? 1 : 0;
+        if (aIsExact !== bIsExact) return bIsExact - aIsExact;
+
+        const aParts = (a.cleanHost || '').split('.').length;
+        const bParts = (b.cleanHost || '').split('.').length;
+        if (aParts !== bParts) return aParts - bParts;
+
+        return (a.url?.length || 0) - (b.url?.length || 0);
+      });
+
       const mainNode = domainNodes[0];
       mainNodes.push(mainNode.id);
-      
-      for (let i = 1; i < domainNodes.length; i++) {
-        const subNode = domainNodes[i];
-        subNode.color = hexToAlpha(mainNode.color, '60');
-        subNode.isSubNode = true;
-        subNode.val = Math.max(3, Math.sqrt(subNode.usageCount || 0) * 1.2 + 3);
 
-        links.push({ 
-          source: mainNode.id, 
-          target: subNode.id,
-          isDomainLink: true 
-        });
+      if (domainNodes.length > 1) {
+        mainNode.isMainDomain = true;
+        mainNode.subdomainCount = domainNodes.length - 1;
+
+        // Distinctly scale up main domain hub node as in user's reference diagram
+        mainNode.val = Math.max(8, (mainNode.val || 5) * 1.45 + Math.min(8, (domainNodes.length - 1) * 2));
+
+        for (let i = 1; i < domainNodes.length; i++) {
+          const subNode = domainNodes[i];
+          subNode.isSubdomain = true;
+          subNode.parentMainDomainId = mainNode.id;
+          subNode.parentDomainName = mainNode.name;
+
+          // Connect subdomains using the main domain's color theme as shown in the reference image
+          subNode.color = mainNode.color;
+          subNode.val = Math.max(3.2, Math.sqrt(subNode.usageCount || 0) * 1.1 + 3.2);
+
+          // Direct physical link from Main Domain -> Subdomain
+          links.push({ 
+            source: mainNode.id, 
+            target: subNode.id,
+            isDomainLink: true,
+            isSubdomainLink: true,
+            color: mainNode.color
+          });
+        }
       }
     });
 
@@ -323,18 +375,189 @@ export const GraphView: React.FC = () => {
       
       // 3. Zoom and center
       if (typeof (fgRef.current as any).zoomToFit === 'function') {
-        (fgRef.current as any).zoomToFit(800, 150);
+        (fgRef.current as any).zoomToFit(1100, 150);
       }
     }
   }, [lastReset, graphData]);
 
+  // Smooth fit to view
   useEffect(() => {
     if (fgRef.current && fitToViewTrigger > 0) {
       if (typeof (fgRef.current as any).zoomToFit === 'function') {
-        (fgRef.current as any).zoomToFit(800, 150);
+        (fgRef.current as any).zoomToFit(1100, 150);
       }
     }
   }, [fitToViewTrigger]);
+
+  // Smooth Zoom In animation trigger
+  useEffect(() => {
+    if (fgRef.current && zoomInTrigger > 0) {
+      const fg = fgRef.current as any;
+      const cur = fg.zoom();
+      if (typeof cur === 'number' && !isNaN(cur)) {
+        fg.zoom(Math.min(14, cur * 1.35), 450);
+      }
+    }
+  }, [zoomInTrigger]);
+
+  // Smooth Zoom Out animation trigger
+  useEffect(() => {
+    if (fgRef.current && zoomOutTrigger > 0) {
+      const fg = fgRef.current as any;
+      const cur = fg.zoom();
+      if (typeof cur === 'number' && !isNaN(cur)) {
+        fg.zoom(Math.max(0.06, cur / 1.35), 450);
+      }
+    }
+  }, [zoomOutTrigger]);
+
+  // Smooth Momentum Wheel Zoom & Pan Animation Loop
+  const zoomAnimRef = useRef<{
+    rafId: number | null;
+    targetK: number | null;
+    currentK: number | null;
+    targetCx: number | null;
+    targetCy: number | null;
+    currentCx: number | null;
+    currentCy: number | null;
+  }>({
+    rafId: null,
+    targetK: null,
+    currentK: null,
+    targetCx: null,
+    targetCy: null,
+    currentCx: null,
+    currentCy: null,
+  });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Don't intercept if scrolling inside an overlay element (context menu, details drawer, modal)
+      const target = e.target as HTMLElement;
+      if (target && target.closest('.glass-dark, button, input, select, textarea, [role="dialog"], .custom-scrollbar')) {
+        return;
+      }
+
+      // Intercept raw d3-zoom stepped zoom
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!fgRef.current) return;
+      const fg = fgRef.current as any;
+
+      const curK = fg.zoom();
+      const curCenter = fg.centerAt();
+      if (typeof curK !== 'number' || isNaN(curK) || !curCenter || typeof curCenter.x !== 'number') return;
+
+      const rect = container.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const width = rect.width;
+      const height = rect.height;
+
+      const anim = zoomAnimRef.current;
+
+      // Initialize animation state if starting from rest
+      if (anim.targetK === null || anim.targetCx === null || anim.targetCy === null) {
+        anim.targetK = curK;
+        anim.currentK = curK;
+        anim.targetCx = curCenter.x;
+        anim.targetCy = curCenter.y;
+        anim.currentCx = curCenter.x;
+        anim.currentCy = curCenter.y;
+      }
+
+      // Normalize delta across input devices (mouse wheel, trackpad, line vs pixel mode)
+      let delta = -e.deltaY;
+      if (e.deltaMode === 1) delta *= 20; // lines mode
+      else if (e.deltaMode === 2) delta *= 300; // pages mode
+
+      // Cap delta per event to prevent sudden jumps on fast spins
+      delta = Math.max(-200, Math.min(200, delta));
+
+      // Calculate exponential zoom factor
+      const zoomSensitivity = 0.0018;
+      const factor = Math.exp(delta * zoomSensitivity);
+      const MIN_ZOOM = 0.06;
+      const MAX_ZOOM = 14.0;
+      const nextTargetK = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, anim.targetK * factor));
+
+      // Focal point zoom: keep world coordinates at cursor invariant
+      const deltaX = mx - width / 2;
+      const deltaY = my - height / 2;
+
+      anim.targetCx = anim.targetCx + deltaX * (1 / anim.targetK - 1 / nextTargetK);
+      anim.targetCy = anim.targetCy + deltaY * (1 / anim.targetK - 1 / nextTargetK);
+      anim.targetK = nextTargetK;
+
+      if (!anim.rafId) {
+        const step = () => {
+          if (!fgRef.current || anim.targetK === null || anim.currentK === null || anim.targetCx === null || anim.targetCy === null) {
+            anim.rafId = null;
+            return;
+          }
+
+          const kDiff = anim.targetK - anim.currentK;
+          const cxDiff = anim.targetCx - anim.currentCx;
+          const cyDiff = anim.targetCy - anim.currentCy;
+
+          // Convergence check: snap and finish animation
+          if (Math.abs(kDiff) < 0.0006 && Math.abs(cxDiff) < 0.06 && Math.abs(cyDiff) < 0.06) {
+            (fgRef.current as any).zoom(anim.targetK);
+            (fgRef.current as any).centerAt(anim.targetCx, anim.targetCy);
+            anim.targetK = null;
+            anim.currentK = null;
+            anim.targetCx = null;
+            anim.targetCy = null;
+            anim.currentCx = null;
+            anim.currentCy = null;
+            anim.rafId = null;
+            return;
+          }
+
+          // Buttery smooth inertia lerp factor: 0.16 (60-120fps fluid deceleration)
+          const lerpRate = 0.16;
+          anim.currentK += kDiff * lerpRate;
+          anim.currentCx += cxDiff * lerpRate;
+          anim.currentCy += cyDiff * lerpRate;
+
+          (fgRef.current as any).zoom(anim.currentK);
+          (fgRef.current as any).centerAt(anim.currentCx, anim.currentCy);
+
+          anim.rafId = requestAnimationFrame(step);
+        };
+        anim.rafId = requestAnimationFrame(step);
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+
+    // Cancel smooth zoom animation if user clicks or starts dragging to avoid fighting user interaction
+    const handlePointerDown = () => {
+      if (zoomAnimRef.current.rafId) {
+        cancelAnimationFrame(zoomAnimRef.current.rafId);
+        zoomAnimRef.current.rafId = null;
+        zoomAnimRef.current.targetK = null;
+        zoomAnimRef.current.currentK = null;
+        zoomAnimRef.current.targetCx = null;
+        zoomAnimRef.current.targetCy = null;
+        zoomAnimRef.current.currentCx = null;
+        zoomAnimRef.current.currentCy = null;
+      }
+    };
+    container.addEventListener('pointerdown', handlePointerDown, { capture: true });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel, { capture: true } as any);
+      container.removeEventListener('pointerdown', handlePointerDown, { capture: true } as any);
+      if (zoomAnimRef.current.rafId) {
+        cancelAnimationFrame(zoomAnimRef.current.rafId);
+      }
+    };
+  }, []);
 
   // Center camera on externally selected node (e.g. from quick open or search)
   useEffect(() => {
@@ -342,7 +565,7 @@ export const GraphView: React.FC = () => {
       const target = graphData.nodes.find((n: any) => n.id === selectedWebsiteId);
       if (target && typeof target.x === 'number' && typeof target.y === 'number') {
         if (typeof (fgRef.current as any).centerAt === 'function') {
-          (fgRef.current as any).centerAt(target.x, target.y, 450);
+          (fgRef.current as any).centerAt(target.x, target.y, 750);
         }
         setClickedNodeId(selectedWebsiteId);
         clickedNodeIdRef.current = selectedWebsiteId;
@@ -404,15 +627,20 @@ export const GraphView: React.FC = () => {
       fg.d3Force('link')
         ?.distance((link: any) => {
           if (link.isParentLink) return linkDist * 1.5;
+          if (link.isSubdomainLink || link.isDomainLink) return Math.round(linkDist * 0.65); // satellite orbit distance
           const isChildConnection = link.isCategoryChildLink;
           return isChildConnection ? Math.round(linkDist * 0.4) : linkDist;
         })
         ?.strength((link: any) => {
           if (link.isParentLink) return 0.15; // Rubbery interconnected main nodes
           
-          const isChildConnection = link.isDomainLink || link.isCategoryChildLink;
+          if (link.isSubdomainLink || link.isDomainLink) {
+            // Tight, cohesive connection holding subdomains to their main domain
+            return 1.8;
+          }
+
+          const isChildConnection = link.isCategoryChildLink;
           if (isChildConnection) {
-            // Rigid connection for subnodes
             return 2.0;
           }
           
@@ -472,9 +700,9 @@ export const GraphView: React.FC = () => {
     }
     
     if (fgRef.current && (!event || (!event.shiftKey && !event.metaKey))) {
-      // Center camera on clicked node
+      // Center camera on clicked node with smooth glide
       if (typeof (fgRef.current as any).centerAt === 'function' && typeof node.x === 'number' && typeof node.y === 'number') {
-        (fgRef.current as any).centerAt(node.x, node.y, 400);
+        (fgRef.current as any).centerAt(node.x, node.y, 750);
       }
     }
     
@@ -578,7 +806,9 @@ export const GraphView: React.FC = () => {
         setHoveredWebsiteId(node.id);
       }, 300); // 300ms delay to prevent flickering
     } else {
-      setHoveredWebsiteId(null);
+      hoverTimeoutRef.current = setTimeout(() => {
+        setHoveredWebsiteId(null);
+      }, 0);
     }
   }, [setHoveredWebsiteId]);
 
@@ -636,9 +866,14 @@ export const GraphView: React.FC = () => {
           isBlurred = true;
           isFocused = false;
        } else {
-           const clickedDomain = getDomain(graphData.nodes.find((n: any) => n.id === clickedNodeId)?.url || '');
-           const nodeDomain = getDomain(node.url || '');
-           if (node.id === clickedNodeId || (clickedDomain && nodeDomain === clickedDomain && nodeDomain !== '')) {
+           const clickedNode = graphData.nodes.find((n: any) => n.id === clickedNodeId);
+           const isSelf = node.id === clickedNodeId;
+           const isParent = clickedNode && node.id === clickedNode.parentMainDomainId;
+           const isChild = clickedNode && node.parentMainDomainId === clickedNode.id;
+           const isSibling = clickedNode && node.parentMainDomainId && clickedNode.parentMainDomainId && node.parentMainDomainId === clickedNode.parentMainDomainId;
+           const isSameRootDomain = clickedNode && node.rootDomain && clickedNode.rootDomain && node.rootDomain === clickedNode.rootDomain;
+
+           if (isSelf || isParent || isChild || isSibling || isSameRootDomain) {
                isFocused = true;
                isBlurred = false;
            } else {
@@ -648,6 +883,8 @@ export const GraphView: React.FC = () => {
        }
     }
 
+    const isObsidian = settings.theme === 'obsidian' || settings.theme === 'dark';
+
     ctx.save();
     if (isBlurred) {
       ctx.globalAlpha = 0.12; // Beautifully dimmed out
@@ -655,10 +892,35 @@ export const GraphView: React.FC = () => {
       ctx.globalAlpha = 1.0;
     }
 
-    const baseSize = node.val || 4;
+    const baseSize = isObsidian ? Math.max(3.5, (node.val || 4) * 0.75) : (node.val || 4);
     const size = (isFocused ? baseSize * 1.8 : baseSize) * 0.8;
 
-    if (settings.glowingNodes && settings.glowStrength > 0) {
+    if (isObsidian) {
+      const nodeDotColor = isFocused ? '#ffffff' : (node.color || '#dcdcdc');
+      // Subtle Obsidian soft halo glow
+      const haloRadius = size * 1.9;
+      const gradient = ctx.createRadialGradient(node.x, node.y, size * 0.2, node.x, node.y, haloRadius);
+      gradient.addColorStop(0, isFocused ? 'rgba(255, 255, 255, 0.45)' : 'rgba(220, 225, 235, 0.22)');
+      gradient.addColorStop(0.5, isFocused ? 'rgba(255, 255, 255, 0.12)' : 'rgba(200, 210, 225, 0.06)');
+      gradient.addColorStop(1, 'transparent');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, haloRadius, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Clean crisp circular node dot
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, size, 0, 2 * Math.PI, false);
+      ctx.fillStyle = nodeDotColor;
+      ctx.fill();
+
+      // Selected ring
+      if (selectedWebsiteIds && selectedWebsiteIds.includes(node.id)) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 1.8 / globalScale;
+        ctx.stroke();
+      }
+    } else if (settings.glowingNodes && settings.glowStrength > 0) {
       ctx.save();
       
       const usageCount = node.usageCount || 0;
@@ -693,33 +955,44 @@ export const GraphView: React.FC = () => {
       ctx.fill();
     }
     
-    // Highlight selected nodes
-    if (selectedWebsiteIds && selectedWebsiteIds.includes(node.id)) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.lineWidth = 3 / globalScale;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, size + 4 / globalScale, 0, 2 * Math.PI, false);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 1 / globalScale;
-      ctx.stroke();
-    } else {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.lineWidth = 1 / globalScale;
-      ctx.stroke();
+    if (!isObsidian) {
+      // Highlight selected or main domain nodes
+      if (selectedWebsiteIds && selectedWebsiteIds.includes(node.id)) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 3 / globalScale;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, size + 4 / globalScale, 0, 2 * Math.PI, false);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 1 / globalScale;
+        ctx.stroke();
+      } else if (node.isMainDomain && node.subdomainCount) {
+        // Subtle orbit halo around main domain hub
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, size + 4 / globalScale, 0, 2 * Math.PI, false);
+        ctx.strokeStyle = hexToAlpha(node.color, '50');
+        ctx.lineWidth = 1.2 / globalScale;
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1 / globalScale;
+        ctx.stroke();
+      }
     }
     
-    if (globalScale > 1.5 && node.name) {
+    if (globalScale > 1.4 && node.name) {
       const label = node.name;
-      const fontSize = 9 / globalScale;
-      ctx.font = `500 ${fontSize}px Inter`;
-      ctx.fillStyle = isFocused ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.5)';
+      const fontSize = 10 / globalScale;
+      ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`;
+      ctx.fillStyle = isObsidian
+        ? (isFocused ? 'rgba(255, 255, 255, 1)' : 'rgba(220, 225, 235, 0.75)')
+        : (isFocused ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.7)');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(label, node.x, node.y + size + 8 / globalScale);
     }
     ctx.restore();
-  }, [clickedNodeId, selectedWebsiteIds, graphData.nodes, settings.glowingNodes, settings.glowStrength, graphFilterCategory, graphFilterTag]);
+  }, [clickedNodeId, selectedWebsiteIds, graphData.nodes, settings.glowingNodes, settings.glowStrength, settings.theme, graphFilterCategory, graphFilterTag]);
 
   return (
     <div 
@@ -744,7 +1017,26 @@ export const GraphView: React.FC = () => {
           width={dimensions.width}
           height={dimensions.height}
           graphData={graphData}
-          nodeLabel="name"
+          nodeLabel={(node: any) => {
+            if (node.isMainDomain && node.subdomainCount) {
+              return `<div style="padding:6px 10px;font-family:system-ui,sans-serif;background:rgba(10,10,15,0.95);border:1px solid rgba(255,255,255,0.15);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.6);">
+                <div style="font-weight:700;font-size:13px;color:#fff;">${node.name}</div>
+                <div style="font-size:11px;color:${node.color || '#60a5fa'};font-weight:600;margin-top:2px;">Main Domain • ${node.subdomainCount} ${node.subdomainCount === 1 ? 'subdomain' : 'subdomains'} connected</div>
+                <div style="font-size:10px;color:rgba(255,255,255,0.5);margin-top:2px;">${node.url}</div>
+              </div>`;
+            }
+            if (node.isSubdomain) {
+              return `<div style="padding:6px 10px;font-family:system-ui,sans-serif;background:rgba(10,10,15,0.95);border:1px solid rgba(255,255,255,0.15);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.6);">
+                <div style="font-weight:700;font-size:13px;color:#fff;">${node.name}</div>
+                <div style="font-size:11px;color:${node.color || '#93c5fd'};font-weight:500;margin-top:2px;">Subdomain of ${node.parentDomainName || 'Main Domain'}</div>
+                <div style="font-size:10px;color:rgba(255,255,255,0.5);margin-top:2px;">${node.url}</div>
+              </div>`;
+            }
+            return `<div style="padding:6px 10px;font-family:system-ui,sans-serif;background:rgba(10,10,15,0.95);border:1px solid rgba(255,255,255,0.15);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.6);">
+              <div style="font-weight:700;font-size:13px;color:#fff;">${node.name}</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.5);margin-top:2px;">${node.url}</div>
+            </div>`;
+          }}
           nodeColor={(node: any) => node.color}
           nodeRelSize={settings.nodeSize}
           d3VelocityDecay={0.15}
@@ -775,27 +1067,25 @@ export const GraphView: React.FC = () => {
             }
           }
 
-          if (link.isDomainLink) {
-             const isConnectedToClicked = clickedNodeId && (link.source.id === clickedNodeId || link.target.id === clickedNodeId || link.source === clickedNodeId || link.target === clickedNodeId);
-             if (clickedNodeId && !isConnectedToClicked) return 'transparent'; // Hide other domain links when focused
-             return 'rgba(255, 255, 255, 0.4)';
-          }
-          
           if (clickedNodeId) {
-            const isConnectedToClicked = link.source.id === clickedNodeId || link.target.id === clickedNodeId || link.source === clickedNodeId || link.target === clickedNodeId;
-            return isConnectedToClicked ? 'rgba(255, 255, 255, 0.2)' : 'transparent';
+            const isConnectedToClicked = link.source.id === clickedNodeId || link.target.id === clickedNodeId || 
+                                         link.source === clickedNodeId || link.target === clickedNodeId;
+            return isConnectedToClicked ? 'rgba(255, 255, 255, 0.45)' : 'rgba(255, 255, 255, 0.03)';
           }
-          
-          if (link.isCategoryChildLink) return 'rgba(255, 255, 255, 0.08)';
-          
-          return 'rgba(255, 255, 255, 0.05)';
+          if (link.isSubdomainLink || link.isDomainLink) {
+            return 'rgba(255, 255, 255, 0.2)';
+          }
+          return 'rgba(255, 255, 255, 0.12)';
         }}
         linkWidth={(link: any) => {
           if (link.isParentLink) return 0;
           if (link.isOrbitLink) return 0;
-          if (link.isDomainLink) return 2;
-          if (link.isCategoryChildLink) return 1.5;
-          return 1;
+          if (clickedNodeId) {
+            const isConnected = link.source.id === clickedNodeId || link.target.id === clickedNodeId || 
+                                link.source === clickedNodeId || link.target === clickedNodeId;
+            return isConnected ? 1.4 : 0.8;
+          }
+          return 0.9;
         }}
         backgroundColor="transparent"
         onNodeClick={handleNodeClick}
@@ -818,11 +1108,20 @@ export const GraphView: React.FC = () => {
         onNodeHover={handleNodeHover}
         onNodeDrag={handleNodeDrag}
         onNodeDragEnd={handleNodeDragEnd}
+        onZoom={(transform: any) => {
+          if (transform && typeof transform.k === 'number') {
+            const pct = Math.round(transform.k * 100);
+            zoomPercentRef.current = pct;
+            if (zoomDisplayRef.current) {
+              zoomDisplayRef.current.textContent = `${pct}%`;
+            }
+          }
+        }}
         cooldownTicks={150}
         onEngineStop={() => {
           if (fgRef.current && lastReset === 0) {
             if (typeof (fgRef.current as any).zoomToFit === 'function') {
-              (fgRef.current as any).zoomToFit(800, 150);
+              (fgRef.current as any).zoomToFit(1100, 150);
             }
           }
         }}
@@ -1028,6 +1327,47 @@ export const GraphView: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Floating Smooth Zoom HUD Controls */}
+      <div 
+        id="graph-zoom-hud"
+        className="absolute bottom-6 right-6 z-30 flex items-center gap-1 p-1 rounded-full bg-[#080c14]/85 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.6)] select-none"
+      >
+        <button
+          onClick={() => triggerZoomOut()}
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer"
+          title="Zoom Out (-)"
+          aria-label="Zoom Out"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <button
+          ref={zoomDisplayRef}
+          onClick={() => triggerFitToView()}
+          className="px-2 py-0.5 text-[11px] font-mono font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all cursor-pointer tracking-tight"
+          title="Reset Zoom / Fit to View (0)"
+          aria-label="Reset Zoom"
+        >
+          100%
+        </button>
+        <button
+          onClick={() => triggerZoomIn()}
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer"
+          title="Zoom In (+)"
+          aria-label="Zoom In"
+        >
+          <PlusIcon className="w-3.5 h-3.5" />
+        </button>
+        <div className="w-[1px] h-3.5 bg-white/10 mx-0.5" />
+        <button
+          onClick={() => triggerFitToView()}
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer"
+          title="Fit to Screen"
+          aria-label="Fit to Screen"
+        >
+          <Focus className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 };

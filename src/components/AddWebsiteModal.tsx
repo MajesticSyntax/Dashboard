@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Globe, Type, Tag as TagIcon, Hash, Plus, Check } from 'lucide-react';
 import { Category, Website } from '../types';
 import { useQueryClient } from '@tanstack/react-query';
+import { getCleanHostname, getRootDomain } from '../lib/utils';
 
 interface AddWebsiteModalProps {
   isOpen: boolean;
@@ -157,6 +158,19 @@ export const AddWebsiteModal: React.FC<AddWebsiteModalProps> = ({ isOpen, onClos
                         placeholder="https://..."
                       />
                     </div>
+                    {(() => {
+                      const cleanHost = getCleanHostname(formData.url);
+                      const rootDomain = getRootDomain(cleanHost);
+                      if (cleanHost && rootDomain && cleanHost !== rootDomain) {
+                        return (
+                          <div className="text-[11px] flex items-center gap-1.5 text-blue-400 bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-xl">
+                            <span className="font-semibold">Subdomain:</span>
+                            <span className="text-white/80">Connects to {rootDomain}</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </div>
 

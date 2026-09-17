@@ -19,7 +19,7 @@ import { GraphFilters } from './components/GraphFilters';
 import { useStore } from './store/useStore';
 import { seedInitialData, db } from './db/db';
 import { motion, AnimatePresence } from 'motion/react';
-import { Maximize2, RotateCcw, LayoutGrid, Plus, MoreVertical, Focus, X, ChevronUp, ChevronDown, Search } from 'lucide-react';
+import { Maximize2, RotateCcw, LayoutGrid, Plus, MoreVertical, Focus, X, ChevronUp, ChevronDown, Search, ZoomIn, ZoomOut } from 'lucide-react';
 import { cn } from './lib/utils';
 
 const queryClient = new QueryClient();
@@ -27,6 +27,9 @@ const queryClient = new QueryClient();
 const getGlowColor = (bgColor: string, theme: string, alpha: number) => {
   if (theme === 'minimal') {
     return `rgba(82, 44, 93, ${alpha})`;
+  }
+  if (theme === 'obsidian' || theme === 'dark') {
+    return `rgba(255, 255, 255, ${alpha * 0.3})`;
   }
   if (bgColor.startsWith('#')) {
     let hex = bgColor.replace('#', '');
@@ -67,6 +70,8 @@ function NexusApp() {
     setQuickSearchOpen,
     triggerReset, 
     triggerFitToView, 
+    triggerZoomIn,
+    triggerZoomOut,
     isSidebarOpen, 
     toggleSidebar, 
     setIsSidebarOpen, 
@@ -160,6 +165,25 @@ function NexusApp() {
         return;
       }
 
+      // Smooth zoom keyboard shortcuts when in graph mode
+      if (viewMode === 'graph') {
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          triggerZoomIn();
+          return;
+        }
+        if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          triggerZoomOut();
+          return;
+        }
+        if (e.key === '0') {
+          e.preventDefault();
+          triggerFitToView();
+          return;
+        }
+      }
+
       // 4. Type-to-Open: Any letter or number typed directly triggers quick open
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== ' ') {
         e.preventDefault();
@@ -170,7 +194,7 @@ function NexusApp() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isQuickSearchOpen, setQuickSearchOpen, setSearchQuery, isSettingsOpen, isAddModalOpen, isProfileOpen, isUnlocked]);
+  }, [viewMode, triggerZoomIn, triggerZoomOut, triggerFitToView, isQuickSearchOpen, setQuickSearchOpen, setSearchQuery, isSettingsOpen, isAddModalOpen, isProfileOpen, isUnlocked]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -219,8 +243,12 @@ function NexusApp() {
 
       {/* Ambient background particles/glows */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/10 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-500/10 blur-[120px]" />
+        {!(settings.theme === 'obsidian' || settings.theme === 'dark') && (
+          <>
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/10 blur-[120px]" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-500/10 blur-[120px]" />
+          </>
+        )}
         {settings.grid && (
           <div className="absolute inset-0 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.4) 1.2px, transparent 1px)', backgroundSize: '32px 32px' }} />
         )}
@@ -384,7 +412,9 @@ function NexusApp() {
                       {[
                         { icon: Search, label: 'Quick Open (⌘K / Type)', onClick: () => setQuickSearchOpen(true) },
                         { icon: Plus, label: 'Add Website', onClick: () => setIsAddModalOpen(true) },
-                        { icon: Focus, label: 'Fit to View', onClick: () => triggerFitToView() },
+                        { icon: ZoomIn, label: 'Zoom In (+)', onClick: () => triggerZoomIn() },
+                        { icon: ZoomOut, label: 'Zoom Out (-)', onClick: () => triggerZoomOut() },
+                        { icon: Focus, label: 'Fit to View (0)', onClick: () => triggerFitToView() },
                         { icon: Maximize2, label: 'Fullscreen', onClick: toggleFullscreen },
                         { icon: RotateCcw, label: 'Reset Visits', onClick: async () => {
                           if (confirm('Are you sure you want to reset all visit counts to 0?')) {
