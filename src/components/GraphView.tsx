@@ -6,8 +6,38 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { db } from '../db/db';
 import { motion, AnimatePresence } from 'motion/react';
 import { Pencil, Trash2, Sliders, Play, Pause, RotateCcw, SkipForward, Activity, Plus as PlusIcon, Check, Sparkles, Info, ExternalLink, ZoomIn, ZoomOut, Minus, Focus } from 'lucide-react';
-import { forceX, forceY, forceCollide } from 'd3-force';
+import { forceX, forceY, forceCollide, forceManyBody } from 'd3-force';
 import { getCleanHostname, getRootDomain } from '../lib/utils';
+
+export const getNodeRadius = (
+  node: any,
+  theme: string = 'nebula',
+  nodeSizeSetting: number = 4,
+  isFocused: boolean = false
+): number => {
+  const scaleMultiplier = Math.max(0.4, (nodeSizeSetting || 4) / 4);
+  const isObsidian = theme === 'obsidian' || theme === 'dark';
+  const val = Number.isFinite(node?.val) ? node.val : 4;
+
+  // Base visual radius in canvas coordinate pixels
+  const baseSize = (isObsidian ? Math.max(3.5, val * 0.75) : Math.max(4, val)) * scaleMultiplier;
+  const radius = (isFocused ? baseSize * 1.5 : baseSize) * 0.8;
+  return Math.max(3, radius);
+};
+
+export const getNodeCollisionRadius = (
+  node: any,
+  theme: string = 'nebula',
+  nodeSizeSetting: number = 4,
+  nodeSpacing: number = 35
+): number => {
+  const visualRadius = getNodeRadius(node, theme, nodeSizeSetting, false);
+  // Collision radius guarantees a hard non-overlap buffer around every node
+  // with ample clearance for glows, text labels, and spacing
+  const spacing = Math.max(16, nodeSpacing || 35);
+  const dynamicPadding = Math.max(spacing, visualRadius * 0.45 + 16);
+  return visualRadius + dynamicPadding;
+};
 
 const imgCache = new Map<string, HTMLImageElement>();
 
@@ -317,24 +347,13 @@ export const GraphView: React.FC = () => {
       }
     });
 
-    if (mainNodes.length > 1) {
-      for (let i = 0; i < mainNodes.length; i++) {
-        for (let j = i + 1; j < mainNodes.length; j++) {
-          links.push({ 
-            source: mainNodes[i], 
-            target: mainNodes[j], 
-            isParentLink: true,
-            distance: linkDist * 2
-          });
-        }
-      }
-    }
-
     nodes.forEach(node => {
       const neighbors = links.filter(l => l.source === node.id || l.target === node.id);
       if (neighbors.length > 0) {
-        node.val = (node.val || 4) * (1 + (neighbors.length * 0.05));
+        node.val = (node.val || 4) * (1 + Math.min(neighbors.length * 0.04, 0.4));
       }
+      // Keep node.val balanced so nodes never grow unboundedly large
+      node.val = Math.min(36, node.val || 4);
       
       // Precompute RGB colors for fast glow rendering
       let r = 255, g = 255, b = 255;
@@ -353,7 +372,7 @@ export const GraphView: React.FC = () => {
     });
 
     return { nodes, links, categories };
-  }, [filteredWebsites, timelapseWebsites, isTimelapseActive, getCustomColor, linkDist]);
+  }, [filteredWebsites, timelapseWebsites, isTimelapseActive, getCustomColor]);
 
   useEffect(() => {
     if (fgRef.current && lastReset > 0) {
@@ -616,55 +635,94 @@ export const GraphView: React.FC = () => {
     };
   }, [isTimelapseActive, isPlaying, timelapseSpeed, sortedWebsites.length]);
 
-  // Live update d3-force simulation when variables are adjusted
+  // Live update d3-force simulation when variables, graph data, or spacing settings change
   useEffect(() => {
     if (fgRef.current && typeof (fgRef.current as any).d3Force === 'function') {
       const fg = fgRef.current as any;
-      // 1. Every single node acts like a negatively charged particle. They all push away from each other.
-      fg.d3Force('charge')?.strength(repulsion); 
-      
-      // 2. Links act like virtual rubber bands or springs.
-      fg.d3Force('link')
-        ?.distance((link: any) => {
-          if (link.isParentLink) return linkDist * 1.5;
-          if (link.isSubdomainLink || link.isDomainLink) return Math.round(linkDist * 0.65); // satellite orbit distance
-          const isChildConnection = link.isCategoryChildLink;
-          return isChildConnection ? Math.round(linkDist * 0.4) : linkDist;
+      const currentSpacing = settings.nodeSpacing ?? 35;
+      const currentNodeSize = settings.nodeSize ?? 4;
+      const currentTheme = settings.theme;
+
+      // Fast node lookup for links
+      const nodeMap = new Map<string, any>();
+      graphData.nodes.forEach((n: any) => nodeMap.set(n.id, n));
+
+      // 1. Repulsive Charge Force (Many-Body)
+      // Nodes repel each other. Larger nodes push away proportionally more to guarantee open space.
+      fg.d3Force(
+        'charge',
+        forceManyBody()
+          .strength((node: any) => {
+            const r = getNodeRadius(node, currentTheme, currentNodeSize, false);
+            const spacingFactor = currentSpacing / 35;
+            return -Math.max(280, (200 + r * 20) * spacingFactor);
+          })
+          .distanceMax(2200)
+          .distanceMin(15)
+      );
+
+      // 2. Rigid Non-Penetration Collision Force
+      // Hard circle boundary collision completely eliminates overlap between nodes
+      fg.d3Force(
+        'collide',
+        forceCollide((node: any) => {
+          return getNodeCollisionRadius(node, currentTheme, currentNodeSize, currentSpacing);
         })
-        ?.strength((link: any) => {
-          if (link.isParentLink) return 0.15; // Rubbery interconnected main nodes
-          
-          if (link.isSubdomainLink || link.isDomainLink) {
-            // Tight, cohesive connection holding subdomains to their main domain
-            return 1.8;
-          }
+          .strength(1.0)
+          .iterations(6)
+      );
 
-          const isChildConnection = link.isCategoryChildLink;
-          if (isChildConnection) {
-            return 2.0;
-          }
-          
-          return linkForceStrength;
-        });
+      // 3. Dynamic Link Spring Force
+      // Holds subdomains in a clean orbit around their parent with plenty of space
+      fg.d3Force(
+        'link',
+        fg.d3Force('link')
+          ?.distance((link: any) => {
+            const sourceNode = typeof link.source === 'object' ? link.source : nodeMap.get(link.source);
+            const targetNode = typeof link.target === 'object' ? link.target : nodeMap.get(link.target);
 
-      // 3. Invisible gravitational pull toward the exact coordinates (0,0) of the screen.
-      fg.d3Force('x', forceX(0).strength(gravity));
-      fg.d3Force('y', forceY(0).strength(gravity));
-      
-      // Standard center force
-      fg.d3Force('center')?.strength(gravity);
+            const r1 = sourceNode ? getNodeRadius(sourceNode, currentTheme, currentNodeSize, false) : 10;
+            const r2 = targetNode ? getNodeRadius(targetNode, currentTheme, currentNodeSize, false) : 10;
+            const subCount = sourceNode?.subdomainCount || targetNode?.subdomainCount || 1;
 
-      // Prevent nodes from overlapping for smoother, more stable layout
-      fg.d3Force('collide', forceCollide((node: any) => {
-        const size = (node.val || 4) * 1.5;
-        return node.isSun ? size + 15 : size + 5;
-      }).iterations(2));
+            if (link.isSubdomainLink || link.isDomainLink) {
+              const minCircumferenceNeeded = subCount * (r2 * 2 + currentSpacing);
+              const minRadiusFromCircumference = minCircumferenceNeeded / (2 * Math.PI);
+              const orbitDist = Math.max(60, minRadiusFromCircumference, currentSpacing * 1.8);
+              return r1 + r2 + orbitDist;
+            }
+
+            return Math.max(r1 + r2 + currentSpacing * 1.5, linkDist);
+          })
+          ?.strength((link: any) => {
+            if (link.isSubdomainLink || link.isDomainLink) {
+              return 0.35;
+            }
+            return Math.min(linkForceStrength, 0.4);
+          })
+      );
+
+      // 4. Centering Forces (gentle positioning without pulling nodes into a dense clump)
+      fg.d3Force('x', forceX(0).strength(0.025));
+      fg.d3Force('y', forceY(0).strength(0.025));
+      fg.d3Force('center')?.strength(0.015);
 
       if (typeof fg.d3ReheatSimulation === 'function') {
         fg.d3ReheatSimulation();
       }
     }
-  }, [repulsion, gravity, linkDist, linkForceStrength]);
+  }, [
+    graphData, 
+    settings.nodeSpacing, 
+    settings.nodeSize, 
+    settings.theme, 
+    repulsion, 
+    gravity, 
+    linkDist, 
+    linkForceStrength, 
+    dimensions.width, 
+    dimensions.height
+  ]);
 
   const handleNodeDrag = useCallback((node: any) => {
     node.fx = node.x;
@@ -813,12 +871,12 @@ export const GraphView: React.FC = () => {
   }, [setHoveredWebsiteId]);
 
   const nodePointerAreaPaint = useCallback((node: any, color: string, ctx: CanvasRenderingContext2D) => {
-    const size = (node.val || 4) * 1.5;
+    const size = getNodeRadius(node, settings.theme, settings.nodeSize, false);
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+    ctx.arc(node.x, node.y, size + 2, 0, 2 * Math.PI);
     ctx.fill();
-  }, []);
+  }, [settings.theme, settings.nodeSize]);
 
   const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
     if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
@@ -892,8 +950,7 @@ export const GraphView: React.FC = () => {
       ctx.globalAlpha = 1.0;
     }
 
-    const baseSize = isObsidian ? Math.max(3.5, (node.val || 4) * 0.75) : (node.val || 4);
-    const size = (isFocused ? baseSize * 1.8 : baseSize) * 0.8;
+    const size = getNodeRadius(node, settings.theme, settings.nodeSize, isFocused);
 
     if (isObsidian) {
       const nodeDotColor = isFocused ? '#ffffff' : (node.color || '#dcdcdc');
@@ -980,19 +1037,19 @@ export const GraphView: React.FC = () => {
       }
     }
     
-    if (globalScale > 1.4 && node.name) {
+    if (globalScale > 0.75 && node.name) {
       const label = node.name;
       const fontSize = 10 / globalScale;
       ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`;
       ctx.fillStyle = isObsidian
-        ? (isFocused ? 'rgba(255, 255, 255, 1)' : 'rgba(220, 225, 235, 0.75)')
-        : (isFocused ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.7)');
+        ? (isFocused ? 'rgba(255, 255, 255, 1)' : 'rgba(220, 225, 235, 0.85)')
+        : (isFocused ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.8)');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(label, node.x, node.y + size + 8 / globalScale);
+      ctx.fillText(label, node.x, node.y + size + 7 / globalScale);
     }
     ctx.restore();
-  }, [clickedNodeId, selectedWebsiteIds, graphData.nodes, settings.glowingNodes, settings.glowStrength, settings.theme, graphFilterCategory, graphFilterTag]);
+  }, [clickedNodeId, selectedWebsiteIds, graphData.nodes, settings.glowingNodes, settings.glowStrength, settings.theme, settings.nodeSize, graphFilterCategory, graphFilterTag]);
 
   return (
     <div 
@@ -1039,8 +1096,8 @@ export const GraphView: React.FC = () => {
           }}
           nodeColor={(node: any) => node.color}
           nodeRelSize={settings.nodeSize}
-          d3VelocityDecay={0.15}
-          d3AlphaDecay={0.01}
+          d3VelocityDecay={0.2}
+          d3AlphaDecay={0.012}
           cooldownTime={15000}
           linkCurvature={0}
         linkColor={(link: any) => {

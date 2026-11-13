@@ -502,6 +502,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             className="w-full accent-blue-500 bg-white/5 rounded-full h-1 cursor-pointer"
                           />
                         </div>
+
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center px-1">
+                            <span className="text-[10px] font-extrabold text-white/85 uppercase tracking-wider">Spacing (Separation)</span>
+                            <span className="text-[10px] font-mono text-blue-400">{settings.nodeSpacing ?? 35}px</span>
+                          </div>
+                          <input 
+                            type="range" min="15" max="85" step="5"
+                            value={settings.nodeSpacing ?? 35}
+                            onChange={(e) => setSettings({ nodeSpacing: parseFloat(e.target.value) })}
+                            className="w-full accent-blue-500 bg-white/5 rounded-full h-1 cursor-pointer"
+                          />
+                        </div>
                       </div>
                     </section>
                   </>

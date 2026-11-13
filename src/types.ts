@@ -29,6 +29,7 @@ export interface AppSettings {
   backgroundColor: string;
   nodeColor: string;
   nodeSize: number;
+  nodeSpacing: number;
   connectionThickness: number;
   glowStrength: number;
   font: string;

@@ -412,8 +412,6 @@ function NexusApp() {
                       {[
                         { icon: Search, label: 'Quick Open (⌘K / Type)', onClick: () => setQuickSearchOpen(true) },
                         { icon: Plus, label: 'Add Website', onClick: () => setIsAddModalOpen(true) },
-                        { icon: ZoomIn, label: 'Zoom In (+)', onClick: () => triggerZoomIn() },
-                        { icon: ZoomOut, label: 'Zoom Out (-)', onClick: () => triggerZoomOut() },
                         { icon: Focus, label: 'Fit to View (0)', onClick: () => triggerFitToView() },
                         { icon: Maximize2, label: 'Fullscreen', onClick: toggleFullscreen },
                         { icon: RotateCcw, label: 'Reset Visits', onClick: async () => {

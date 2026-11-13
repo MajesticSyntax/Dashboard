@@ -95,6 +95,7 @@ export const useStore = create<NexusState>()(
         backgroundColor: '#050505',
         nodeColor: '#3b82f6',
         nodeSize: 4,
+        nodeSpacing: 35,
         connectionThickness: 1,
         glowStrength: 10,
         font: 'Inter',
